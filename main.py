@@ -1,12 +1,11 @@
 from selenium import webdriver
-from selenium.webdriver.firefox.firefox_binary import FirefoxBinary
 from selenium.webdriver.firefox.options import Options
-from selenium.webdriver.common.desired_capabilities import DesiredCapabilities
-from selenium.webdriver import FirefoxProfile
+from bs4 import BeautifulSoup
 import time
 import re
 import os
 import pickle 
+
 
 debug = False
 
@@ -14,6 +13,10 @@ def main():
     print("Hello World")
 
     posts_url = "https://www.patreon.com/AldhaRoku/posts"
+    start_year = 2020
+    end_year = 2020
+    start_month = 1
+    end_month = 1
 
     '''
     var = None
@@ -24,7 +27,7 @@ def main():
             posts_url = var
         else:
             var = None
-    '''
+    
     
     var = None
     while (var == None):
@@ -37,6 +40,7 @@ def main():
             if (start_month > 12 or start_month < 1):
                 print("months must be between 1 and 12")
                 var = None
+                continue
         else:
             var = None
         
@@ -51,12 +55,15 @@ def main():
             if (end_year < start_year):
                 print("end year must be after start year")
                 var = None
+                continue
             if (end_year == start_year) & (end_month < start_month):
                 print("end month must be after start month")
                 var = None
+                continue
             if (end_month > 12 or end_month < 1):
                 print("months must be between 1 and 12")
                 var = None
+                continue
         else:
             var = None
     
@@ -64,6 +71,20 @@ def main():
         print("Url: " + str(posts_url))
         print("Start Date: " + str(start_date))
         print("End Date: " + str(end_date))
+
+    '''
+    
+    driver = webdriver.Firefox()
+    driver.get(posts_url)
+    if (os.path.isfile("cookies.pkl")):
+        for cookie in pickle.load(open("cookies.pkl", "rb")):
+            driver.add_cookie(cookie)
+        driver.get(posts_url)
+    else:
+        var = None
+        while (var != "Y"):
+            var = input("Done logging in? (Y/N)")
+        pickle.dump(driver.get_cookies(), open("cookies.pkl", "wb"))
 
     for year in range(start_year, end_year+1):
         if (year == start_year):
@@ -82,17 +103,45 @@ def main():
             inversion_url = query_url + "&sort=published_at"
             if (debug): print(inversion_url)
 
-    print ("Done")
+            # Go down one way
+
+            driver.get(query_url)
+
+            time.sleep(1)
+
+            height = driver.execute_script("return document.body.scrollHeight")
+            x = 0
+            stop = False
+
+            while (stop != True):
+                while x < height:
+                    time.sleep(0.05)
+                    driver.execute_script("window.scrollTo(0, " + str(x) +");")
+                    x = x + 100
+                time.sleep(5)
+
+                new_height = driver.execute_script("return document.body.scrollHeight")
+                if (new_height != height):
+                    stop = False
+                    continue
+
+                print(soup.find(string=re.compile("Load more")))
+
+            return
+
+            soup = BeautifulSoup(driver.page_source, 'html.parser')
+            titles = soup.find_all(attrs={'data-tag':'post-title'})
+            links = []
+            for link in titles:
+                a = link.find("a")
+                links.append(a.get('href'))
+
+            print(links)
+
+            
 
 
     '''
-    driver = webdriver.Firefox()
-    driver.get(posts_url)
-    var = None
-    while (var != "Y"):
-        var = input("Done logging in? (Y/N)")
-
-
     pickle.dump(driver.get_cookies(), open("cookies.pkl", "wb"))
     driver.close()
     time.sleep(5)
