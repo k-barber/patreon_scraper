@@ -5,14 +5,21 @@ import os
 import time
 
 
-channel_url = "https://discord.com/channels/561827776571768833/561830072265474078"
+var = None
+while (var == None):
+    var = input("Please enter Discord channel URL (discord.com/channels/12345678910/12345678910):")
+    if (re.match(r"(https?:\/\/)?(www\.)?(discord\.com/channels/\d*/\d*)", var)):
+        channel_url = var
+    else: 
+        print("Channel URL must be in form 'discord.com/channels/12345678910/12345678910'")
+        var = None
+
 driver = webdriver.Firefox()
 driver.get(channel_url)
 
 var = None
 while (var != "Y"):
     var = input("Done logging in? (Y/N)")
-
 
 soup = BeautifulSoup(driver.page_source, 'html.parser')
 
@@ -43,9 +50,10 @@ while (scroll_position > 0) :
 with open('images.txt', mode="wt", encoding="utf-8") as myfile:
     myfile.write('\n'.join(links))
     
-with open('images.txt') as f:
-    links = f.read().splitlines()
-
+#
+#with open('images.txt') as f:
+#    links = f.read().splitlines()
+#
 
 for link in links:
     filename = link[link.rindex("/") + 1:]
