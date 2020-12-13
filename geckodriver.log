@@ -84,7 +84,8 @@ console.warn: SearchSettings: "get: No settings file exists, new profile?" (new 
 1607808069971	Marionette	INFO	Listening on port 52882
 1607808070331	Marionette	WARN	TLS certificate errors will be ignored for this session
 JavaScript error: , line 0: NS_ERROR_NOT_AVAILABLE
-1607811299121	geckodriver	INFO	Listening on 127.0.0.1:64663
+JavaScript error: , line 0: NS_ERROR_NOT_AVAILABLE
+1:64663
 1607811302160	mozrunner::runner	INFO	Running command: "C:\\Program Files (x86)\\Mozilla Firefox\\firefox.exe" "--marionette" "-foreground" "-no-remote" "-profile" "C:\\Users\\redyo\\AppData\\Local\\Temp\\rust_mozprofileQSGvRV"
 Can't find symbol 'eglSwapBuffersWithDamageEXT'.
 Can't find symbol 'eglSetDamageRegionKHR'.
@@ -1017,3 +1018,147 @@ JavaScript warning: https://discord.com/assets/5d8b8552010b2861eb3a.js, line 45:
 JavaScript warning: https://discord.com/assets/5d8b8552010b2861eb3a.js, line 45: unreachable code after return statement
 JavaScript warning: https://discord.com/assets/5d8b8552010b2861eb3a.js, line 45: unreachable code after return statement
 JavaScript warning: https://discord.com/assets/5d8b8552010b2861eb3a.js, line 45: unreachable code after return statement
+1607896355381	Marionette	INFO	Stopped listening on port 53000
+
+###!!! [Child][MessageChannel::SendAndWait] Error: Channel error: cannot send/recv
+
+1607896362710	geckodriver	INFO	Listening on 127.0.0.1:59523
+1607896365691	mozrunner::runner	INFO	Running command: "C:\\Program Files (x86)\\Mozilla Firefox\\firefox.exe" "--marionette" "-foreground" "-no-remote" "-profile" "C:\\Users\\redyo\\AppData\\Local\\Temp\\rust_mozprofileZugPsP"
+Can't find symbol 'eglSwapBuffersWithDamageEXT'.
+Can't find symbol 'eglSetDamageRegionKHR'.
+JavaScript error: resource://gre/modules/XULStore.jsm, line 66: Error: Can't find profile directory.
+console.warn: SearchSettings: "get: No settings file exists, new profile?" (new Error("", "(unknown module)"))
+1607896369012	Marionette	INFO	Listening on port 59531
+1607896369378	Marionette	WARN	TLS certificate errors will be ignored for this session
+1607896369380	Marionette	INFO	Proxy settings initialised: {"proxyType":"manual","httpProxy":"127.0.0.1:59521","noProxy":[],"sslProxy":"127.0.0.1:59521"}
+JavaScript warning: https://discord.com/assets/29b5f77e000ea506be0f.js, line 45: unreachable code after return statement
+JavaScript warning: https://discord.com/assets/29b5f77e000ea506be0f.js, line 45: unreachable code after return statement
+JavaScript warning: https://discord.com/assets/29b5f77e000ea506be0f.js, line 45: unreachable code after return statement
+JavaScript warning: https://discord.com/assets/29b5f77e000ea506be0f.js, line 45: unreachable code after return statement
+1607896411325	Marionette	INFO	Stopped listening on port 59531
+
+###!!! [Child][RunMessage] Error: Channel closing: too late to send/recv, messages will be lost
+
+
+###!!! [Child][MessageChannel::SendAndWait] Error: Channel error: cannot send/recv
+
+1607896426894	geckodriver	INFO	Listening on 127.0.0.1:64038
+1607896429966	mozrunner::runner	INFO	Running command: "C:\\Program Files (x86)\\Mozilla Firefox\\firefox.exe" "--marionette" "-foreground" "-no-remote" "-profile" "C:\\Users\\redyo\\AppData\\Local\\Temp\\rust_mozprofileP9zE4K"
+Can't find symbol 'eglSwapBuffersWithDamageEXT'.
+Can't find symbol 'eglSetDamageRegionKHR'.
+JavaScript error: resource://gre/modules/XULStore.jsm, line 66: Error: Can't find profile directory.
+console.warn: SearchSettings: "get: No settings file exists, new profile?" (new Error("", "(unknown module)"))
+1607896433590	Marionette	INFO	Listening on port 64048
+1607896433660	Marionette	WARN	TLS certificate errors will be ignored for this session
+1607896433662	Marionette	INFO	Proxy settings initialised: {"proxyType":"manual","httpProxy":"127.0.0.1:64036","noProxy":[],"sslProxy":"127.0.0.1:64036"}
+JavaScript warning: https://discord.com/assets/29b5f77e000ea506be0f.js, line 45: unreachable code after return statement
+JavaScript warning: https://discord.com/assets/29b5f77e000ea506be0f.js, line 45: unreachable code after return statement
+JavaScript warning: https://discord.com/assets/29b5f77e000ea506be0f.js, line 45: unreachable code after return statement
+JavaScript warning: https://discord.com/assets/29b5f77e000ea506be0f.js, line 45: unreachable code after return statement
+JavaScript error: resource://gre/actors/AutoCompleteChild.jsm, line 235: Error: Invalid autocomplete selectedIndex
+JavaScript error: resource://gre/actors/AutoCompleteChild.jsm, line 235: Error: Invalid autocomplete selectedIndex
+JavaScript error: resource://gre/modules/LoginManagerChild.jsm, line 190: NS_ERROR_XPC_JAVASCRIPT_ERROR_WITH_DETAILS: [JavaScript Error: "Invalid autocomplete selectedIndex" {file: "resource://gre/actors/AutoCompleteChild.jsm" line: 235}]'[JavaScript Error: "Invalid autocomplete selectedIndex" {file: "resource://gre/actors/AutoCompleteChild.jsm" line: 235}]' when calling method: [nsIAutoCompletePopup::selectedIndex]
+1607896557928	Marionette	INFO	Stopped listening on port 64048
+
+###!!! [Child][RunMessage] Error: Channel closing: too late to send/recv, messages will be lost
+
+
+###!!! [Child][MessageChannel::SendAndWait] Error: Channel error: cannot send/recv
+
+1607896586788	geckodriver	INFO	Listening on 127.0.0.1:65375
+1607896589836	mozrunner::runner	INFO	Running command: "C:\\Program Files (x86)\\Mozilla Firefox\\firefox.exe" "--marionette" "-foreground" "-no-remote" "-profile" "C:\\Users\\redyo\\AppData\\Local\\Temp\\rust_mozprofile22GlD8"
+Can't find symbol 'eglSwapBuffersWithDamageEXT'.
+Can't find symbol 'eglSetDamageRegionKHR'.
+JavaScript error: resource://gre/modules/XULStore.jsm, line 66: Error: Can't find profile directory.
+console.warn: SearchSettings: "get: No settings file exists, new profile?" (new Error("", "(unknown module)"))
+1607896593063	Marionette	INFO	Listening on port 65385
+1607896593541	Marionette	WARN	TLS certificate errors will be ignored for this session
+1607896593543	Marionette	INFO	Proxy settings initialised: {"proxyType":"manual","httpProxy":"127.0.0.1:65373","noProxy":[],"sslProxy":"127.0.0.1:65373"}
+JavaScript warning: https://discord.com/assets/29b5f77e000ea506be0f.js, line 45: unreachable code after return statement
+JavaScript warning: https://discord.com/assets/29b5f77e000ea506be0f.js, line 45: unreachable code after return statement
+JavaScript warning: https://discord.com/assets/29b5f77e000ea506be0f.js, line 45: unreachable code after return statement
+JavaScript warning: https://discord.com/assets/29b5f77e000ea506be0f.js, line 45: unreachable code after return statement
+JavaScript error: resource://gre/actors/AutoCompleteChild.jsm, line 235: Error: Invalid autocomplete selectedIndex
+JavaScript error: resource://gre/actors/AutoCompleteChild.jsm, line 235: Error: Invalid autocomplete selectedIndex
+JavaScript error: resource://gre/modules/LoginManagerChild.jsm, line 190: NS_ERROR_XPC_JAVASCRIPT_ERROR_WITH_DETAILS: [JavaScript Error: "Invalid autocomplete selectedIndex" {file: "resource://gre/actors/AutoCompleteChild.jsm" line: 235}]'[JavaScript Error: "Invalid autocomplete selectedIndex" {file: "resource://gre/actors/AutoCompleteChild.jsm" line: 235}]' when calling method: [nsIAutoCompletePopup::selectedIndex]
+1607896878251	Marionette	INFO	Stopped listening on port 65385
+
+###!!! [Child][RunMessage] Error: Channel closing: too late to send/recv, messages will be lost
+
+
+###!!! [Child][MessageChannel::SendAndWait] Error: Channel error: cannot send/recv
+
+1607896882445	geckodriver	INFO	Listening on 127.0.0.1:63438
+1607896885477	mozrunner::runner	INFO	Running command: "C:\\Program Files (x86)\\Mozilla Firefox\\firefox.exe" "--marionette" "-foreground" "-no-remote" "-profile" "C:\\Users\\redyo\\AppData\\Local\\Temp\\rust_mozprofile5h0SaX"
+Can't find symbol 'eglSwapBuffersWithDamageEXT'.
+Can't find symbol 'eglSetDamageRegionKHR'.
+JavaScript error: resource://gre/modules/XULStore.jsm, line 66: Error: Can't find profile directory.
+console.warn: SearchSettings: "get: No settings file exists, new profile?" (new Error("", "(unknown module)"))
+1607896887723	Marionette	INFO	Listening on port 63447
+1607896888154	Marionette	WARN	TLS certificate errors will be ignored for this session
+1607896888157	Marionette	INFO	Proxy settings initialised: {"proxyType":"manual","httpProxy":"127.0.0.1:63436","noProxy":[],"sslProxy":"127.0.0.1:63436"}
+JavaScript warning: https://discord.com/assets/29b5f77e000ea506be0f.js, line 45: unreachable code after return statement
+JavaScript warning: https://discord.com/assets/29b5f77e000ea506be0f.js, line 45: unreachable code after return statement
+JavaScript warning: https://discord.com/assets/29b5f77e000ea506be0f.js, line 45: unreachable code after return statement
+JavaScript warning: https://discord.com/assets/29b5f77e000ea506be0f.js, line 45: unreachable code after return statement
+JavaScript error: resource://gre/actors/AutoCompleteChild.jsm, line 235: Error: Invalid autocomplete selectedIndex
+JavaScript error: resource://gre/actors/AutoCompleteChild.jsm, line 235: Error: Invalid autocomplete selectedIndex
+JavaScript error: resource://gre/modules/LoginManagerChild.jsm, line 190: NS_ERROR_XPC_JAVASCRIPT_ERROR_WITH_DETAILS: [JavaScript Error: "Invalid autocomplete selectedIndex" {file: "resource://gre/actors/AutoCompleteChild.jsm" line: 235}]'[JavaScript Error: "Invalid autocomplete selectedIndex" {file: "resource://gre/actors/AutoCompleteChild.jsm" line: 235}]' when calling method: [nsIAutoCompletePopup::selectedIndex]
+JavaScript error: , line 0: AbortError: The fetching process for the media resource was aborted by the user agent at the user's request.
+JavaScript error: , line 0: AbortError: The fetching process for the media resource was aborted by the user agent at the user's request.
+JavaScript error: , line 0: AbortError: The fetching process for the media resource was aborted by the user agent at the user's request.
+JavaScript error: , line 0: AbortError: The fetching process for the media resource was aborted by the user agent at the user's request.
+JavaScript error: , line 0: AbortError: The fetching process for the media resource was aborted by the user agent at the user's request.
+1607897041457	Marionette	INFO	Stopped listening on port 63447
+
+###!!! [Child][MessageChannel::SendAndWait] Error: Channel error: cannot send/recv
+
+1607897046829	geckodriver	INFO	Listening on 127.0.0.1:51478
+1607897050970	mozrunner::runner	INFO	Running command: "C:\\Program Files (x86)\\Mozilla Firefox\\firefox.exe" "--marionette" "-foreground" "-no-remote" "-profile" "C:\\Users\\redyo\\AppData\\Local\\Temp\\rust_mozprofileKWZThl"
+Can't find symbol 'eglSwapBuffersWithDamageEXT'.
+Can't find symbol 'eglSetDamageRegionKHR'.
+JavaScript error: resource://gre/modules/XULStore.jsm, line 66: Error: Can't find profile directory.
+console.warn: SearchSettings: "get: No settings file exists, new profile?" (new Error("", "(unknown module)"))
+1607897054200	Marionette	INFO	Listening on port 51487
+1607897054669	Marionette	WARN	TLS certificate errors will be ignored for this session
+1607897054672	Marionette	INFO	Proxy settings initialised: {"proxyType":"manual","httpProxy":"127.0.0.1:51475","noProxy":[],"sslProxy":"127.0.0.1:51475"}
+JavaScript warning: https://discord.com/assets/29b5f77e000ea506be0f.js, line 45: unreachable code after return statement
+JavaScript warning: https://discord.com/assets/29b5f77e000ea506be0f.js, line 45: unreachable code after return statement
+JavaScript warning: https://discord.com/assets/29b5f77e000ea506be0f.js, line 45: unreachable code after return statement
+JavaScript warning: https://discord.com/assets/29b5f77e000ea506be0f.js, line 45: unreachable code after return statement
+JavaScript error: resource://gre/actors/AutoCompleteChild.jsm, line 235: Error: Invalid autocomplete selectedIndex
+JavaScript error: resource://gre/actors/AutoCompleteChild.jsm, line 235: Error: Invalid autocomplete selectedIndex
+JavaScript error: resource://gre/modules/LoginManagerChild.jsm, line 190: NS_ERROR_XPC_JAVASCRIPT_ERROR_WITH_DETAILS: [JavaScript Error: "Invalid autocomplete selectedIndex" {file: "resource://gre/actors/AutoCompleteChild.jsm" line: 235}]'[JavaScript Error: "Invalid autocomplete selectedIndex" {file: "resource://gre/actors/AutoCompleteChild.jsm" line: 235}]' when calling method: [nsIAutoCompletePopup::selectedIndex]
+Marionette threw an error: TypeError: driver.dialogObserver is null
+waitForNavigationCompleted/<@chrome://marionette/content/navigate.js:364:5
+
+1607897190823	Marionette	INFO	Stopped listening on port 51487
+
+###!!! [Child][RunMessage] Error: Channel closing: too late to send/recv, messages will be lost
+
+
+###!!! [Child][MessageChannel::SendAndWait] Error: Channel error: cannot send/recv
+
+1607897229660	geckodriver	INFO	Listening on 127.0.0.1:61321
+1607897232690	mozrunner::runner	INFO	Running command: "C:\\Program Files (x86)\\Mozilla Firefox\\firefox.exe" "--marionette" "-foreground" "-no-remote" "-profile" "C:\\Users\\redyo\\AppData\\Local\\Temp\\rust_mozprofilemBJEHR"
+Can't find symbol 'eglSwapBuffersWithDamageEXT'.
+Can't find symbol 'eglSetDamageRegionKHR'.
+JavaScript error: resource://gre/modules/XULStore.jsm, line 66: Error: Can't find profile directory.
+console.warn: SearchSettings: "get: No settings file exists, new profile?" (new Error("", "(unknown module)"))
+1607897240769	Marionette	INFO	Listening on port 61329
+1607897241141	Marionette	WARN	TLS certificate errors will be ignored for this session
+1607897241142	Marionette	INFO	Proxy settings initialised: {"proxyType":"manual","httpProxy":"127.0.0.1:61319","noProxy":[],"sslProxy":"127.0.0.1:61319"}
+JavaScript warning: https://discord.com/assets/29b5f77e000ea506be0f.js, line 45: unreachable code after return statement
+JavaScript warning: https://discord.com/assets/29b5f77e000ea506be0f.js, line 45: unreachable code after return statement
+JavaScript warning: https://discord.com/assets/29b5f77e000ea506be0f.js, line 45: unreachable code after return statement
+JavaScript warning: https://discord.com/assets/29b5f77e000ea506be0f.js, line 45: unreachable code after return statement
+JavaScript error: resource://gre/actors/AutoCompleteChild.jsm, line 235: Error: Invalid autocomplete selectedIndex
+JavaScript error: resource://gre/actors/AutoCompleteChild.jsm, line 235: Error: Invalid autocomplete selectedIndex
+JavaScript error: resource://gre/modules/LoginManagerChild.jsm, line 190: NS_ERROR_XPC_JAVASCRIPT_ERROR_WITH_DETAILS: [JavaScript Error: "Invalid autocomplete selectedIndex" {file: "resource://gre/actors/AutoCompleteChild.jsm" line: 235}]'[JavaScript Error: "Invalid autocomplete selectedIndex" {file: "resource://gre/actors/AutoCompleteChild.jsm" line: 235}]' when calling method: [nsIAutoCompletePopup::selectedIndex]
+1607897615397	Marionette	INFO	Stopped listening on port 61329
+
+###!!! [Child][RunMessage] Error: Channel closing: too late to send/recv, messages will be lost
+
+
+###!!! [Child][MessageChannel::SendAndWait] Error: Channel error: cannot send/recv
+
