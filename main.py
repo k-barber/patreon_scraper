@@ -1,7 +1,7 @@
 from seleniumwire import webdriver
 from selenium.webdriver.firefox.options import Options
-from selenium.webdriver import ActionChains
 from selenium.common import exceptions
+from selenium.webdriver.support.ui import WebDriverWait
 from bs4 import BeautifulSoup
 import time
 import re
@@ -148,7 +148,11 @@ def main():
         print("Start Date: " + str(start_date))
         print("End Date: " + str(end_date))
     
-    driver = webdriver.Firefox()
+    options = {
+        'connection_timeout': None  # Never timeout
+    }
+    driver = webdriver.Firefox(seleniumwire_options=options)
+    WebDriverWait(driver, 5)
     driver.get(posts_url)
 
     if (os.path.isfile("patreon_cookie.pkl")):
@@ -156,8 +160,8 @@ def main():
             driver.add_cookie(cookie)
         driver.get(posts_url)
 
-    var = None
-    while (var != "Y"):
+    var = ""
+    while (var.lower() != "y"):
         var = input("Done logging in? (Y/N)")
 
     pickle.dump(driver.get_cookies(), open("patreon_cookie.pkl", "wb"))
@@ -198,68 +202,80 @@ def main():
     with open('post_links.txt', mode="wt", encoding="utf-8") as myfile:
         myfile.write('\n'.join(post_links))
     
-    with open('post_links.txt') as f:
-        post_links = f.read().splitlines()
+    #with open('post_links.txt') as f:
+    #    post_links = f.read().splitlines()
 
-    links = []
+    links = {}
 
     pathlib.Path(os.getcwd()+ "/scraped/").mkdir(parents=True, exist_ok=True)
 
     for post_link in post_links:
-        driver.get(post_link)
-        soup = BeautifulSoup(driver.page_source, 'html.parser')
+        successful = False
+        wait = 60
+        while not successful:
+            try:
+                driver.get(post_link)
+                soup = BeautifulSoup(driver.page_source, 'html.parser')
 
-        title = soup.find(attrs={"data-tag":"post-title"})
-        title = title.contents[0]
-        title = "".join([c for c in title if c.isalpha() or c.isdigit()]).rstrip()
+                title = soup.find(attrs={"data-tag":"post-title"})
+                title = title.contents[0]
+                title = "".join([c for c in title if c.isalpha() or c.isdigit()]).rstrip()
 
-        content = soup.find_all(attrs={"data-tag":"post-content"})
-        if (content):
-            for content_piece in content:
-                content_links = content_piece.find_all("a")
-                if (content_links):
-                    for link in content_links:
-                        href = link.get("href")
-                        if (href not in links):
-                            links.append(href)
+                content = soup.find_all(attrs={"data-tag":"post-content"})
+                if (content):
+                    for content_piece in content:
+                        content_links = content_piece.find_all("a")
+                        if (content_links):
+                            for link in content_links:
+                                href = link.get("href")
+                                if (href not in links.keys()):
+                                    links[href] = content_piece.stripped_strings
 
-        images = driver.find_elements_by_xpath('//img[@data-pin-nopin="true"]')
-        driver.scopes = [
-            '.*c10\.patreonusercontent.*'
-        ]
-        for image in images:
-            del driver.requests
-            image.click()
-            driver.wait_for_request("c10.patreonusercontent")
-            request = driver.last_request
-            image_url = request.url
-            if (request.response):
-                filename = image_url[image_url.rindex("/") + 1:image_url.rindex(".")]
-                fileextension = image_url[image_url.rindex("."):image_url.rindex("?")]
-                pathlib.Path(os.getcwd()+ "/scraped/" + title + "/").mkdir(parents=True, exist_ok=True)
-                path = os.getcwd()+ "/scraped/" + title + "/" + filename + fileextension
-                if (os.path.isfile(path)):
-                    repeat = 1
-                    while (os.path.isfile(path)):
-                        path = os.getcwd()+ "/scraped/" + title + "/" + filename + " (" + str(repeat) + ")" + fileextension
-                        repeat = repeat + 1
-            
-                output = open(path, "wb")
-                output.write(request.response.body)
-                output.close()
-            time.sleep(1)
-            box = driver.find_element_by_xpath('//div[@data-target="lightbox-content"]')
-            while(box):
-                driver.execute_script("arguments[0].click()", box)
-                try:
+                images = driver.find_elements_by_xpath('//img[@data-pin-nopin="true"]')
+                driver.scopes = [
+                    '.*c10\.patreonusercontent.*'
+                ]
+                for image in images:
+                    del driver.requests
+                    image.click()
+                    driver.wait_for_request("c10.patreonusercontent", timeout=wait)
+                    request = driver.last_request
+                    image_url = request.url
+                    if (request.response):
+                        filename = image_url[image_url.rindex("/") + 1:image_url.rindex(".")]
+                        fileextension = image_url[image_url.rindex("."):image_url.rindex("?")]
+                        pathlib.Path(os.getcwd()+ "/scraped/" + title + "/").mkdir(parents=True, exist_ok=True)
+                        path = os.getcwd()+ "/scraped/" + title + "/" + filename + fileextension
+                        if (os.path.isfile(path)):
+                            repeat = 1
+                            while (os.path.isfile(path)):
+                                path = os.getcwd()+ "/scraped/" + title + "/" + filename + " (" + str(repeat) + ")" + fileextension
+                                repeat = repeat + 1
+                    
+                        output = open(path, "wb")
+                        output.write(request.response.body)
+                        output.close()
+                    time.sleep(0.5)
                     box = driver.find_element_by_xpath('//div[@data-target="lightbox-content"]')
-                except exceptions.NoSuchElementException as err:
-                    box = None
-                    pass   
-                time.sleep(1)
+                    while(box):
+                        driver.execute_script("arguments[0].click()", box)
+                        try:
+                            WebDriverWait(driver, 1)
+                            box = driver.find_element_by_xpath('//div[@data-target="lightbox-content"]')
+                        except exceptions.NoSuchElementException as err:
+                            box = None
+                            WebDriverWait(driver, 5)
+                            pass     
+                        time.sleep(0.5)
+                successful = True
+            except exceptions.TimeoutException as err:
+                print("Timeout Error!")
+                print("Setting wait to: " + str(wait))
+                WebDriverWait(driver, wait)
+                wait = wait * 2
 
     with open(os.getcwd() + '/scraped/links.txt', mode="wt", encoding="utf-8") as myfile:
-        myfile.write('\n'.join(links))
-
+        for key, val in links.items():
+            myfile.write(key + "\t" + '\t'.join(val) + '\n')
 
 main()
