@@ -23,10 +23,7 @@ def scrape_month(query_url, sentinel_url = None):
     if (driver is None):
         return
 
-    if (sentinel_url == None):
-        found_sentinel = True
-    else:
-        found_sentinel = False
+    found_sentinel = False
 
     driver.get(query_url)
     height = driver.execute_script("return document.body.scrollHeight")
@@ -105,6 +102,9 @@ def scrape_month(query_url, sentinel_url = None):
                 else:
                     stop = True
             else:
+                # No "Load more Button" - has reached the end
+                if (sentinel_url == None):
+                    found_sentinel = True 
                 stop = True
         else:
             stop = True
@@ -228,7 +228,10 @@ def main():
 
             # Go down one way
 
-            scrape_month(query_url)
+            found_sentinel = scrape_month(query_url)
+
+            if (found_sentinel): # Reached the end of the month, don't need to invert
+                continue
 
             sentinel = post_links[-1] #Most recent post
 
@@ -251,8 +254,6 @@ def main():
     #with open('post_links.txt') as f:
     #    post_links = f.read().splitlines()
 
-    links = {}
-
     pathlib.Path(os.getcwd()+ "/scraped/").mkdir(parents=True, exist_ok=True)
 
     for post_link in post_links:
@@ -263,21 +264,24 @@ def main():
                 driver.get(post_link)
                 soup = BeautifulSoup(driver.page_source, 'html.parser')
 
-                title = soup.find(attrs={"data-tag":"post-title"})
-                title = title.contents[0]
-                title = "".join([c for c in title if c.isalpha() or c.isdigit()]).rstrip()
-
+                #title = soup.find(attrs={"data-tag":"post-title"})
+                #title = title.contents[0]
+                #title = "".join([c for c in title if c.isalpha() or c.isdigit()]).rstrip()
+                
+                title = post_link[post_link.rindex("/") + 1 :]            
+                pathlib.Path(os.getcwd()+ "/scraped/" + title + "/").mkdir(parents=True, exist_ok=True)    
 
                 # If there are any links grab the post content (for Mega links with password)
-                content = soup.find_all(attrs={"data-tag":"post-content"})
+                content = soup.find(attrs={"data-tag":"post-content"})
                 if (content):
-                    for content_piece in content:
-                        content_links = content_piece.find_all("a")
-                        if (content_links):
-                            for link in content_links:
-                                href = link.get("href")
-                                if (href not in links.keys()):
-                                    links[href] = content_piece.stripped_strings
+                    path = os.getcwd()+ "/scraped/" + title + "/post-text.txt"
+                    content_links = content.find_all("a")
+                    if (content_links):
+                        path = os.getcwd()+ "/scraped/" + title + "/post-text-HAS-LINKS.txt"
+                    output = open(path, "wt")
+                    for line in content.strings:
+                        output.write(str(line))
+                    output.close()
 
                 # Get all the images
                 images = driver.find_elements_by_xpath('//img[@data-pin-nopin="true"]')
@@ -299,7 +303,6 @@ def main():
 
                         fileextension = image_url[image_url.rindex("."):image_url.rindex("?")]
 
-                        pathlib.Path(os.getcwd()+ "/scraped/" + title + "/").mkdir(parents=True, exist_ok=True)
                         path = os.getcwd()+ "/scraped/" + title + "/" + filename + fileextension
 
                         # Don't overwrite images
@@ -361,7 +364,6 @@ def main():
                     driver.set_script_timeout(30) 
                     request = driver.last_request
                     if (request.response):
-                        pathlib.Path(os.getcwd()+ "/scraped/" + title + "/").mkdir(parents=True, exist_ok=True)
                         path = os.getcwd()+ "/scraped/" + title + "/" + filename + fileextension
 
                         # Don't overwrite images
@@ -381,10 +383,6 @@ def main():
                 print("Setting wait to: " + str(wait))
                 WebDriverWait(driver, wait)
                 wait = wait * 2
-
-    with open(os.getcwd() + '/scraped/links.txt', mode="wt", encoding="utf-8") as myfile:
-        for key, val in links.items():
-            myfile.write(key + "\t" + '\t'.join(val) + '\n')
 
     driver.close()
     exit()
