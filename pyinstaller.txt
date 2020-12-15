@@ -1,0 +1,1 @@
+pyinstaller -F --clean --noupx -i icon.ico main.py

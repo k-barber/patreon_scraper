@@ -2,7 +2,9 @@ from seleniumwire import webdriver
 from selenium.webdriver.firefox.options import Options
 from selenium.common import exceptions
 from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.firefox import firefox_profile
 from bs4 import BeautifulSoup
+from binascii import a2b_base64
 import time
 import re
 import os
@@ -80,17 +82,28 @@ def scrape_month(query_url, sentinel_url = None):
         keep_searching_for_sentinel = ((not found_sentinel) & (old_href != newest_href))
 
         if (unique_post_found or keep_searching_for_sentinel):
+            wait = 1
+            loader = soup.find(attrs={"aria-label":"loading more posts"})
+            while (loader): 
+                loader = soup.find(attrs={"aria-label":"loading more posts"})
+                time.sleep(wait)
+                wait = wait * 2
+                if (wait > 120):
+                    break
             a_string = soup.find(string=re.compile(r"^Load more$"))
-            if debug: print(a_string)
-            button = a_string.find_parent("button")
-            if debug: print(button)
-            if(button):
-                class_list = button['class']
-                class_string = ".".join(class_list)
-                if debug: print(class_string)
-                more_button = driver.find_element_by_class_name(class_string)
-                if debug: print(more_button)
-                more_button.click()
+            if (a_string):
+                if debug: print(a_string)
+                button = a_string.find_parent("button")
+                if debug: print(button)
+                if(button):
+                    class_list = button['class']
+                    class_string = ".".join(class_list)
+                    if debug: print(class_string)
+                    more_button = driver.find_element_by_class_name(class_string)
+                    if debug: print(more_button)
+                    more_button.click()
+                else:
+                    stop = True
             else:
                 stop = True
         else:
@@ -117,7 +130,7 @@ def main():
     
     var = None
     while (var == None):
-        var = input("Enter a patreon posts tab URL (patreon.com/artist/posts):")
+        var = input("Enter a patreon posts tab URL (patreon.com/account/posts):")
         matched = re.match(r"^((https?://)?www.)?patreon.com\/([a-zA-Z0-9_]*)\/posts$", var)
         if (matched):
             posts_url = var
@@ -171,7 +184,15 @@ def main():
     options = {
         'connection_timeout': None  # Never timeout
     }
-    driver = webdriver.Firefox(seleniumwire_options=options)
+
+    fp = webdriver.FirefoxProfile()
+    fp.set_preference("browser.download.manager.showWhenStarting", False)
+    fp.set_preference("browser.download.manager.showAlertOnComplete", False)
+    fp.set_preference("browser.helperApps.neverAsk.saveToDisk", "image/jpg, image/jpeg, image/png, application/zip")
+    fp.set_preference("browser.download.dir", os.getcwd() + "/scraped")
+
+
+    driver = webdriver.Firefox(firefox_profile=fp, seleniumwire_options=options)
     WebDriverWait(driver, 5)
     driver.get(posts_url)
 
@@ -246,6 +267,8 @@ def main():
                 title = title.contents[0]
                 title = "".join([c for c in title if c.isalpha() or c.isdigit()]).rstrip()
 
+
+                # If there are any links grab the post content (for Mega links with password)
                 content = soup.find_all(attrs={"data-tag":"post-content"})
                 if (content):
                     for content_piece in content:
@@ -256,9 +279,13 @@ def main():
                                 if (href not in links.keys()):
                                     links[href] = content_piece.stripped_strings
 
+                # Get all the images
                 images = driver.find_elements_by_xpath('//img[@data-pin-nopin="true"]')
+
+                # Only look at network traffic to the Patreon image server 
                 driver.scopes = [
-                    '.*c10\.patreonusercontent.*'
+                    '.*c10\.patreonusercontent.*',
+                    '.*patreon.com/file.*'
                 ]
                 for image in images:
                     del driver.requests
@@ -267,10 +294,15 @@ def main():
                     request = driver.last_request
                     image_url = request.url
                     if (request.response):
+
                         filename = image_url[image_url.rindex("/") + 1:image_url.rindex(".")]
+
                         fileextension = image_url[image_url.rindex("."):image_url.rindex("?")]
+
                         pathlib.Path(os.getcwd()+ "/scraped/" + title + "/").mkdir(parents=True, exist_ok=True)
                         path = os.getcwd()+ "/scraped/" + title + "/" + filename + fileextension
+
+                        # Don't overwrite images
                         if (os.path.isfile(path)):
                             repeat = 1
                             while (os.path.isfile(path)):
@@ -280,6 +312,8 @@ def main():
                         output = open(path, "wb")
                         output.write(request.response.body)
                         output.close()
+
+                    # Once the image is downloaded, close the highlight box to get the next one
                     time.sleep(0.5)
                     box = driver.find_element_by_xpath('//div[@data-target="lightbox-content"]')
                     while(box):
@@ -292,8 +326,55 @@ def main():
                             WebDriverWait(driver, 5)
                             pass     
                         time.sleep(0.5)
+
+                # Download any file attachments
+                attachment_links = soup.find_all(href=re.compile(r"https://www\.patreon\.com/file"))
+
+                # Only look at network requests for the Patreon file server
+                for attachment_link in attachment_links:
+                    del driver.requests
+                    url = attachment_link.get("href")
+                    print(url)
+                    text = attachment_link.contents[0]
+                    print(text)
+                    filename = text[:text.index(".")]
+                    fileextension = text[text.index("."):]
+
+                    # get the file via XMLHttpRequest to prevent system "save as" dialog
+                    script = """
+                    var done = arguments[0];
+                    let xhr = new XMLHttpRequest();
+                    xhr.open("get", '""" + url + """')
+
+                    let reader = new FileReader();
+
+                    xhr.onload = function(){
+                        done();
+                    }
+
+                    xhr.send()
+                    """
+                    stuff = driver.execute_async_script(script)
+                    driver.wait_for_request("patreon.com/file", timeout=900)
+                    request = driver.last_request
+                    if (request.response):
+                        pathlib.Path(os.getcwd()+ "/scraped/" + title + "/").mkdir(parents=True, exist_ok=True)
+                        path = os.getcwd()+ "/scraped/" + title + "/" + filename + fileextension
+
+                        # Don't overwrite images
+                        if (os.path.isfile(path)):
+                            repeat = 1
+                            while (os.path.isfile(path)):
+                                path = os.getcwd()+ "/scraped/" + title + "/" + filename + " (" + str(repeat) + ")" + fileextension
+                                repeat = repeat + 1
+                    
+                        output = open(path, "wb")
+                        output.write(request.response.body)
+                        output.close()
+
                 successful = True
             except exceptions.TimeoutException as err:
+                print)
                 print("Timeout Error!")
                 print("Setting wait to: " + str(wait))
                 WebDriverWait(driver, wait)
