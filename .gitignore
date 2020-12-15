@@ -4,3 +4,6 @@ scraped
 cookies.pkl
 geckodriver.log
 patreon_cookie.pkl
+
+build
+dist
