@@ -354,8 +354,11 @@ def main():
 
                     xhr.send()
                     """
+                    # Attached files like .zip or .psd can be very large, so timeout is set to 30 minutes
+                    driver.set_script_timeout(1800) 
                     stuff = driver.execute_async_script(script)
-                    driver.wait_for_request("patreon.com/file", timeout=900)
+                    driver.wait_for_request("patreon.com/file", timeout=1800)
+                    driver.set_script_timeout(30) 
                     request = driver.last_request
                     if (request.response):
                         pathlib.Path(os.getcwd()+ "/scraped/" + title + "/").mkdir(parents=True, exist_ok=True)
@@ -374,7 +377,6 @@ def main():
 
                 successful = True
             except exceptions.TimeoutException as err:
-                print)
                 print("Timeout Error!")
                 print("Setting wait to: " + str(wait))
                 WebDriverWait(driver, wait)
