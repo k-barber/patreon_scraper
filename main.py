@@ -13,16 +13,25 @@ driver = None
 debug = True
 post_links = []
 
-def scrape_month(query_url):
+def scrape_month(query_url, sentinel_url = None):
+    '''sentinel_url - the URL that must be seen when going in reverse
+    '''
     global driver
     global post_links
     if (driver is None):
         return
 
+    if (sentinel_url == None):
+        found_sentinel = True
+    else:
+        found_sentinel = False
+
     driver.get(query_url)
     height = driver.execute_script("return document.body.scrollHeight")
     x = 0
     stop = False
+    old_href = None
+    newest_href = None
 
     while (stop != True):
         while x < height:
@@ -57,12 +66,20 @@ def scrape_month(query_url):
                 if debug: print(re.match(r"^https://www\.patreon\.com/posts/", href))
                 if (re.match(r"^https://www\.patreon\.com/posts/", href)):
                     if debug: print("regex match")
+                    newest_href = href
+                    if (href == sentinel_url):
+                        if debug: print("FOUND SENTINEL")
+                        found_sentinel = True
+                        break
                     if (href not in post_links):
                         if debug: print("Unique Link: " + href)
                         unique_post_found = True
                         post_links.append(href)
 
-        if (unique_post_found):
+        #If we haven't seen the sentinel and we're not repeating post loads, keep searching
+        keep_searching_for_sentinel = ((not found_sentinel) & (old_href != newest_href))
+
+        if (unique_post_found or keep_searching_for_sentinel):
             a_string = soup.find(string=re.compile(r"^Load more$"))
             if debug: print(a_string)
             button = a_string.find_parent("button")
@@ -80,6 +97,9 @@ def scrape_month(query_url):
             stop = True
     
     if debug: print(post_links)
+
+    if debug: print("Found Sentinel? " + str(found_sentinel))
+    return found_sentinel
     
 
 
@@ -189,13 +209,18 @@ def main():
 
             scrape_month(query_url)
 
+            sentinel = post_links[-1] #Most recent post
+
             if debug: print(post_links)
 
             time.sleep(1)
 
             # Go down the other way
 
-            scrape_month(inversion_url)
+            found_sentinel = scrape_month(inversion_url)
+
+            while not found_sentinel:
+                found_sentinel = scrape_month(inversion_url)
 
             if debug: print(post_links)
 
@@ -277,5 +302,8 @@ def main():
     with open(os.getcwd() + '/scraped/links.txt', mode="wt", encoding="utf-8") as myfile:
         for key, val in links.items():
             myfile.write(key + "\t" + '\t'.join(val) + '\n')
+
+    driver.close()
+    exit()
 
 main()
