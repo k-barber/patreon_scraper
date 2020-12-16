@@ -13,6 +13,7 @@ import re
 import os
 import pathlib
 import pickle 
+import sys
 
 driver = None
 debug = True
@@ -32,7 +33,7 @@ def scrape_mega_link(link, folder):
     except exceptions.TimeoutException:
         try:
             WebDriverWait(driver, 30).until(
-                EC.presence_of_element_located((By.CLASS_NAME, "megaList-content"))
+                EC.presence_of_element_located((By.CLASS_NAME, "fm-right-files-block"))
             )
             print("MEGA Folder link")
             link_type = "folder"
