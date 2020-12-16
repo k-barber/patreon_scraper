@@ -3,8 +3,11 @@ from selenium.webdriver.firefox.options import Options
 from selenium.common import exceptions
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.firefox import firefox_profile
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
 from bs4 import BeautifulSoup
 from binascii import a2b_base64
+import shutil
 import time
 import re
 import os
@@ -14,6 +17,67 @@ import pickle
 driver = None
 debug = True
 post_links = []
+
+def scrape_mega_link(link, folder):
+    print("Scraping link")
+    global driver
+    driver.get(link)
+    link_type = None
+    try:
+        WebDriverWait(driver, 5).until(
+            EC.presence_of_element_located((By.CLASS_NAME, "transfer-wrapper"))
+        )
+        print("MEGA File link")
+        link_type = "file"
+    except exceptions.TimeoutException:
+        try:
+            WebDriverWait(driver, 30).until(
+                EC.presence_of_element_located((By.CLASS_NAME, "megaList-content"))
+            )
+            print("MEGA Folder link")
+            link_type = "folder"
+        except exceptions.TimeoutException:
+            print("Couldn't Identify")
+            return -1
+    
+    if (link_type == "file"):
+        print("type is file")
+        download_button = driver.find_element_by_css_selector(".download.big-button.button.download-file.green.transition")
+        print("found button")
+        WebDriverWait(driver, 20).until(
+            EC.visibility_of(download_button)
+        )
+        download_button.click()
+        print("Clicked!")
+        time.sleep(1)
+        complete_notice = driver.find_element_by_css_selector(".download.main-transfer-info .download.complete-block")
+        WebDriverWait(driver, 1800).until(
+            EC.visibility_of(complete_notice)
+        )
+        print("Download Complete!")
+    elif (link_type == "folder"):
+        print("type is folder")
+        download_button = driver.find_element_by_css_selector(".button.link-button.right.fm-download-as-zip")
+        print("found button")
+        WebDriverWait(driver, 20).until(
+            EC.visibility_of(download_button)
+        )
+        download_button.click()
+        print("Clicked!")
+        time.sleep(0.05)
+        WebDriverWait(driver, 1800).until(
+            EC.text_to_be_present_in_element((By.CLASS_NAME, "transfer-task-status"), "Completed")
+        )
+        print("Download Complete!")
+    else:
+        return -1
+    driver.get("about:downloads")
+    fileName = driver.execute_script("return document.querySelector('#contentAreaDownloadsView .downloadMainArea .downloadContainer description:nth-of-type(1)').value")
+    old_location = os.getcwd()+ "/scraped/" + fileName
+    new_location = folder + fileName
+    time.sleep(2) # Wait for the file to be completely written
+    shutil.move(old_location, new_location)
+    return fileName
 
 def scrape_month(query_url, sentinel_url = None):
     '''sentinel_url - the URL that must be seen when going in reverse
@@ -120,7 +184,7 @@ def main():
     global driver
     global post_links
 
-    '''
+    
     posts_url = "https://www.patreon.com/AldhaRoku/posts"
     start_year = 2020
     end_year = 2020
@@ -131,7 +195,7 @@ def main():
     var = None
     while (var == None):
         var = input("Enter a patreon posts tab URL (patreon.com/account/posts):")
-        matched = re.match(r"^((https?://)?www.)?patreon.com\/([a-zA-Z0-9_]*)\/posts$", var)
+        matched = re.match(r"^(https?://)?(www.)?patreon.com\/([a-zA-Z0-9_]*)\/posts$", var)
         if (matched):
             posts_url = var
         else:
@@ -181,16 +245,21 @@ def main():
         print("Start Date: " + str(start_date))
         print("End Date: " + str(end_date))
     
+    '''
     options = {
         'connection_timeout': None  # Never timeout
     }
-
+    
     fp = webdriver.FirefoxProfile()
+    fp.set_preference("browser.download.folderList", 2)
+    fp.set_preference("browser.download.dir", os.getcwd() + "\\scraped")
     fp.set_preference("browser.download.manager.showWhenStarting", False)
     fp.set_preference("browser.download.manager.showAlertOnComplete", False)
-    fp.set_preference("browser.helperApps.neverAsk.saveToDisk", "image/jpg, image/jpeg, image/png, application/zip")
-    fp.set_preference("browser.download.dir", os.getcwd() + "/scraped")
-
+    download_types = """
+        image/jpg, image/jpeg, image/png, application/zip, application/x-photoshop, image/vnd.adobe.photoshop,
+        application/photoshop, application/psd, image/psd
+    """
+    fp.set_preference("browser.helperApps.neverAsk.saveToDisk", download_types)
 
     driver = webdriver.Firefox(firefox_profile=fp, seleniumwire_options=options)
     WebDriverWait(driver, 5)
@@ -201,12 +270,15 @@ def main():
             driver.add_cookie(cookie)
         driver.get(posts_url)
 
+    '''
     var = ""
     while (var.lower() != "y"):
         var = input("Done logging in? (Y/N)")
+    '''
 
     pickle.dump(driver.get_cookies(), open("patreon_cookie.pkl", "wb"))
     
+    """
     post_links = []
     
     for year in range(start_year, end_year+1):
@@ -250,9 +322,10 @@ def main():
 
     with open('post_links.txt', mode="wt", encoding="utf-8") as myfile:
         myfile.write('\n'.join(post_links))
+    """
     
-    #with open('post_links.txt') as f:
-    #    post_links = f.read().splitlines()
+    with open('post_links.txt') as f:
+        post_links = f.read().splitlines()
 
     pathlib.Path(os.getcwd()+ "/scraped/").mkdir(parents=True, exist_ok=True)
 
@@ -268,20 +341,9 @@ def main():
                 #title = title.contents[0]
                 #title = "".join([c for c in title if c.isalpha() or c.isdigit()]).rstrip()
                 
-                title = post_link[post_link.rindex("/") + 1 :]            
-                pathlib.Path(os.getcwd()+ "/scraped/" + title + "/").mkdir(parents=True, exist_ok=True)    
-
-                # If there are any links grab the post content (for Mega links with password)
-                content = soup.find(attrs={"data-tag":"post-content"})
-                if (content):
-                    path = os.getcwd()+ "/scraped/" + title + "/post-text.txt"
-                    content_links = content.find_all("a")
-                    if (content_links):
-                        path = os.getcwd()+ "/scraped/" + title + "/post-text-HAS-LINKS.txt"
-                    output = open(path, "wt")
-                    for line in content.strings:
-                        output.write(str(line))
-                    output.close()
+                title = post_link[post_link.rindex("/") + 1 :]
+                folder = os.getcwd()+ "/scraped/" + title + "/"
+                pathlib.Path(folder).mkdir(parents=True, exist_ok=True)    
 
                 # Get all the images
                 images = driver.find_elements_by_xpath('//img[@data-pin-nopin="true"]')
@@ -303,13 +365,13 @@ def main():
 
                         fileextension = image_url[image_url.rindex("."):image_url.rindex("?")]
 
-                        path = os.getcwd()+ "/scraped/" + title + "/" + filename + fileextension
+                        path = folder + filename + fileextension
 
                         # Don't overwrite images
                         if (os.path.isfile(path)):
                             repeat = 1
                             while (os.path.isfile(path)):
-                                path = os.getcwd()+ "/scraped/" + title + "/" + filename + " (" + str(repeat) + ")" + fileextension
+                                path = folder + filename + " (" + str(repeat) + ")" + fileextension
                                 repeat = repeat + 1
                     
                         output = open(path, "wb")
@@ -364,18 +426,59 @@ def main():
                     driver.set_script_timeout(30) 
                     request = driver.last_request
                     if (request.response):
-                        path = os.getcwd()+ "/scraped/" + title + "/" + filename + fileextension
+                        path = folder + filename + fileextension
 
                         # Don't overwrite images
                         if (os.path.isfile(path)):
                             repeat = 1
                             while (os.path.isfile(path)):
-                                path = os.getcwd()+ "/scraped/" + title + "/" + filename + " (" + str(repeat) + ")" + fileextension
+                                path = folder + filename + " (" + str(repeat) + ")" + fileextension
                                 repeat = repeat + 1
                     
                         output = open(path, "wb")
                         output.write(request.response.body)
                         output.close()
+
+                # If there are any links grab the post content (for Mega links with password)
+                content = soup.find(attrs={"data-tag":"post-content"})
+                if (content):
+                    path = folder + "post-text.txt"
+                    content_links = content.find_all("a")
+                    if (content_links):
+                        for link in content_links:
+                            href = link.get("href")
+                            print(href)
+                            if (re.match(r"(https?://)?(www\.)?drive\.google\.com", href)):
+                                print("#Google Drive link")
+                                pass 
+                            elif (re.match(r"(https?://)?(www\.)?dropbox\.com", href)):
+                                print("Dropbox link")
+                                pass
+                            elif (re.match(r"(https?://)?(www\.)?mega\.nz/(folder|file|#)", href)):
+                                print("Mega link")
+                                result = scrape_mega_link(href, folder)
+                                if (result == -1):
+                                    path = folder + "post-text-UNSCRAPED-LINKS.txt"
+                                pass
+                            elif (re.match(r"(https?://)?(www\.)?mega\.nz/", href)):
+                                print("Incomplete MEGA link")
+                                strings = list(content.strings)
+                                for num, line in enumerate(strings):
+                                    print(str(line))
+                                    if re.match(r"(https?://)?(www\.)?mega\.nz/", line):
+                                        complete_link = line + strings[num + 1]
+                                        print("complete link: " + complete_link)
+                                        result = scrape_mega_link(complete_link, folder)
+                                        if (result == -1):
+                                            path = folder + "post-text-UNSCRAPED-LINKS.txt"
+                                        break
+                                pass
+                            else:
+                                path = folder + "post-text-UNSCRAPED-LINKS.txt"
+                    output = open(path, "wt")
+                    for line in content.strings:
+                        output.write(str(line))
+                    output.close()
 
                 successful = True
             except exceptions.TimeoutException as err:
