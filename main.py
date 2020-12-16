@@ -18,58 +18,59 @@ import sys
 driver = None
 debug = True
 post_links = []
+scraped_external_links = []
 
 def scrape_mega_link(link, folder):
-    print("Scraping link")
     global driver
+    global scraped_external_links
     driver.get(link)
     link_type = None
     try:
         WebDriverWait(driver, 5).until(
             EC.presence_of_element_located((By.CLASS_NAME, "transfer-wrapper"))
         )
-        print("MEGA File link")
         link_type = "file"
     except exceptions.TimeoutException:
         try:
             WebDriverWait(driver, 30).until(
                 EC.presence_of_element_located((By.CLASS_NAME, "fm-right-files-block"))
             )
-            print("MEGA Folder link")
             link_type = "folder"
         except exceptions.TimeoutException:
             print("Couldn't Identify")
             return -1
     
     if (link_type == "file"):
-        print("type is file")
         download_button = driver.find_element_by_css_selector(".download.big-button.button.download-file.green.transition")
-        print("found button")
         WebDriverWait(driver, 20).until(
             EC.visibility_of(download_button)
         )
+        url = driver.current_url
+        print("Scraping Mega url: " + url)
+        if (url in scraped_external_links):
+            print("DUPLICATE URL DETECTED")
+            return url
         download_button.click()
-        print("Clicked!")
         time.sleep(1)
         complete_notice = driver.find_element_by_css_selector(".download.main-transfer-info .download.complete-block")
         WebDriverWait(driver, 1800).until(
             EC.visibility_of(complete_notice)
         )
-        print("Download Complete!")
     elif (link_type == "folder"):
-        print("type is folder")
         download_button = driver.find_element_by_css_selector(".button.link-button.right.fm-download-as-zip")
-        print("found button")
         WebDriverWait(driver, 20).until(
             EC.visibility_of(download_button)
         )
+        url = driver.current_url
+        print("Scraping Mega url: " + url)
+        if (url in scraped_external_links):
+            print("DUPLICATE URL DETECTED")
+            return url
         download_button.click()
-        print("Clicked!")
         time.sleep(0.05)
         WebDriverWait(driver, 1800).until(
             EC.text_to_be_present_in_element((By.CLASS_NAME, "transfer-task-status"), "Completed")
         )
-        print("Download Complete!")
     else:
         return -1
     driver.get("about:downloads")
@@ -78,7 +79,7 @@ def scrape_mega_link(link, folder):
     new_location = folder + fileName
     time.sleep(2) # Wait for the file to be completely written
     shutil.move(old_location, new_location)
-    return fileName
+    return url
 
 def scrape_month(query_url, sentinel_url = None):
     '''sentinel_url - the URL that must be seen when going in reverse
@@ -184,6 +185,7 @@ def scrape_month(query_url, sentinel_url = None):
 def main():
     global driver
     global post_links
+    global scraped_external_links
 
     
     posts_url = "https://www.patreon.com/AldhaRoku/posts"
@@ -325,7 +327,7 @@ def main():
         myfile.write('\n'.join(post_links))
     """
     
-    with open('post_links.txt') as f:
+    with open('post_links.txt', mode="rt") as f:
         post_links = f.read().splitlines()
 
     pathlib.Path(os.getcwd()+ "/scraped/").mkdir(parents=True, exist_ok=True)
@@ -445,40 +447,59 @@ def main():
                 if (content):
                     path = folder + "post-text.txt"
                     content_links = content.find_all("a")
+                    external_links = []
+                    unscraped_links = []
+                    duplicate_links = []
                     if (content_links):
                         for link in content_links:
                             href = link.get("href")
-                            print(href)
                             if (re.match(r"(https?://)?(www\.)?drive\.google\.com", href)):
                                 print("#Google Drive link")
                                 pass 
                             elif (re.match(r"(https?://)?(www\.)?dropbox\.com", href)):
                                 print("Dropbox link")
                                 pass
-                            elif (re.match(r"(https?://)?(www\.)?mega\.nz/(folder|file|#)", href)):
-                                print("Mega link")
-                                result = scrape_mega_link(href, folder)
-                                if (result == -1):
-                                    path = folder + "post-text-UNSCRAPED-LINKS.txt"
-                                pass
                             elif (re.match(r"(https?://)?(www\.)?mega\.nz/", href)):
-                                print("Incomplete MEGA link")
-                                strings = list(content.strings)
-                                for num, line in enumerate(strings):
-                                    print(str(line))
-                                    if re.match(r"(https?://)?(www\.)?mega\.nz/", line):
-                                        complete_link = line + strings[num + 1]
-                                        print("complete link: " + complete_link)
-                                        result = scrape_mega_link(complete_link, folder)
-                                        if (result == -1):
-                                            path = folder + "post-text-UNSCRAPED-LINKS.txt"
-                                        break
-                                pass
+                                if (re.match(r"(https?://)?(www\.)?mega\.nz/(folder/\S*#|file/\S*#|#)", href)):
+                                    print("Complete Mega link")
+                                    result = scrape_mega_link(href, folder)
+                                else:
+                                    print("Incomplete MEGA link")
+                                    strings = list(content.strings)
+                                    for num, line in enumerate(strings):
+                                        if re.match(r"(https?://)?(www\.)?mega\.nz/", line):
+                                            href = line + strings[num + 1]
+                                            print("complete link: " + href)
+                                            result = scrape_mega_link(href, folder)
+                                            break
                             else:
+                                result = -1
+                            
+                            external_links.append(href)
+
+                            if (result == -1):
                                 path = folder + "post-text-UNSCRAPED-LINKS.txt"
-                    output = open(path, "wt")
+                                unscraped_links.append(href)
+                            elif (result not in scraped_external_links):
+                                scraped_external_links.append(result)
+                            elif (result in scraped_external_links):
+                                duplicate_links.append(result)
+                    output = open(path, "at")
+                    output.write("----- " + time.strftime("%Y/%m/%d - %H:%M:%S", time.localtime()) + " -----\n")
                     for line in content.strings:
-                        output.write(str(line))
+                        output.write(str(line) + "\n")
+                    if (external_links):
+                        output.write("\nExternal Links:\n")
+                        for external_link in external_links:
+                            output.write(external_link + "\n")
+                    if (unscraped_links):
+                        output.write("\nUnscraped Links:\n")
+                        for unscraped_link in unscraped_links:
+                            output.write(unscraped_link + "\n")
+                    if (duplicate_links):
+                        output.write("\nDuplicate Links:\n")
+                        for duplicate_link in duplicate_links: 
+                            output.write(duplicate_link + "\n")
                     output.close()
 
                 successful = True
