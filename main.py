@@ -7,6 +7,9 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from bs4 import BeautifulSoup
 from binascii import a2b_base64
+from drive_downloader import download_drive_item
+import json
+import mimetypes
 import shutil
 import time
 import re
@@ -19,6 +22,110 @@ driver = None
 debug = True
 post_links = []
 scraped_external_links = []
+
+def download_drive_file(id, destination):
+    global driver
+    url = driver.current_url
+    if (re.match(r"https://drive\.google\.com/file/d/" + str(id), url) == None):
+        driver.get("https://drive.google.com/file/d/" + str(id))
+    soup = BeautifulSoup(driver.page_source, 'html.parser')
+    info = soup.find(id="drive-active-item-info")
+
+    item_data = json.loads(info.contents[0])
+    
+    file_extension = mimetypes.guess_extension(item_data['mimeType'])
+
+    full_name = item_data['title']
+    file_name = full_name[:full_name.rindex(".")]
+    file_name = "".join([c for c in file_name if c.isalpha() or c.isdigit()]).rstrip()
+
+    pathlib.Path(destination).mkdir(parents=True, exist_ok=True)
+    location = destination + file_name + file_extension
+    result = download_drive_item(item_data['id'], location)
+    if (result > 0):
+        return url
+    else:
+        return -1
+
+def download_drive_folder(id, folder_name, destination):
+    global driver
+    url = driver.current_url
+    if (re.match(r"https://drive\.google\.com/drive/folders/" + str(id), url) == None):
+        driver.get("https://drive.google.com/drive/folders/" + str(id))
+    soup = BeautifulSoup(driver.page_source, 'html.parser')
+    docs = soup.find_all(attrs={"data-target":"doc", "data-id": re.compile("\w*")})
+
+    print("Making folder: " + destination)
+    pathlib.Path(destination).mkdir(parents=True, exist_ok=True)
+
+    subfolders = []
+    files = []
+
+    error_code = None
+
+    for doc in docs:
+        data_id = doc.get("data-id")
+        print(str(data_id))
+        download_button = doc.find(attrs={"aria-label":"Download"})
+        folder_label = doc.find(attrs={"aria-label": re.compile("Google Drive Folder")})
+        if (folder_label):
+            print("ID is folder")
+            label_text = folder_label.get("aria-label")
+            # Labels are in form "subfolder name Google Drive Folder"
+            sub_folder_name = label_text[:label_text.index(" Google Drive Folder")]
+            subfolders.append({"ID" : data_id, "name":sub_folder_name})
+        else:
+            print("ID is not folder")
+            files.append(data_id)
+            
+    for data_id in files:
+        time.sleep(2)
+        result = download_drive_file(data_id, destination)
+        if (result == -1):
+            error_code = -1
+    for subfolder in subfolders:
+        time.sleep(2)
+        response = download_drive_folder(subfolder["ID"], subfolder["name"], destination + subfolder["name"] + "/" )
+        if (response == -1):
+            error_code = -1
+    if (error_code):
+        return error_code
+    return url
+
+def scrape_google_link(link, folder):
+    global driver
+    global scraped_external_links
+
+    link_type = None
+    if re.match(r"https://drive\.google\.com/file/d/.*(/view|/edit)", link):
+        link_type = "file"
+    else:
+        driver.get(link)
+        url = driver.current_url
+        if (url.index("folder") != -1):
+            link_type = "folder"
+        elif (url.index("file/d/") != -1):
+            link_type = "file"
+        else: 
+            print("Couldn't Identify")
+            return -1
+
+    if (link_type == "file"):
+        return download_drive_file(url[url.index("file/d/") + 7 : url.rindex("/")], folder + "Google_Drive/")
+    elif (link_type == "folder"):
+        response = download_drive_folder(url[url.rindex("/") + 1:], "Google_Drive",  folder + "Google_Drive/")
+        if (response == url[url.rindex("/") + 1:]):
+            return url
+        else :
+            return -1
+    else:
+        return -1
+    
+
+def scrape_dropbox_link(link, folder):
+    """https://www.dropbox.com/sh/fk9qnda0fgnrnzq/AAAEkVZ8fw-LgC10uWcgIqQLa?dl=0
+    https://www.dropbox.com/s/s1ayv4beoj9ishb/ElfL1owU0AM0KOt-orig.jpg?dl=0
+    """
 
 def scrape_mega_link(link, folder):
     global driver
@@ -266,6 +373,9 @@ def main():
 
     driver = webdriver.Firefox(firefox_profile=fp, seleniumwire_options=options)
     WebDriverWait(driver, 5)
+
+    scrape_google_link("https://drive.google.com/drive/folders/1mx92hkkZXLbi1JIjm6PELj3a48jMgcJx", os.getcwd() + "/scraped/")
+    return
     driver.get(posts_url)
 
     if (os.path.isfile("patreon_cookie.pkl")):
@@ -454,7 +564,18 @@ def main():
                         for link in content_links:
                             href = link.get("href")
                             if (re.match(r"(https?://)?(www\.)?drive\.google\.com", href)):
-                                print("#Google Drive link")
+                                if (re.match(r"(https?://)?(www\.)?drive\.google\.com/(file/d/\S*|drive/folders/\S*)", href)):
+                                    print("Complete Google Drive link")
+                                    result = scrape_google_link(href, folder)
+                                else: 
+                                    print("Incomplete Google Drive link")
+                                    strings = list(content.strings)
+                                    for num, line in enumerate(strings):
+                                        if re.match(r"(https?://)?(www\.)?drive\.google\.com", line):
+                                            href = line + strings[num + 1]
+                                            print("complete link: " + href)
+                                            result = scrape_google_link(href, folder)
+                                            break
                                 pass 
                             elif (re.match(r"(https?://)?(www\.)?dropbox\.com", href)):
                                 print("Dropbox link")
