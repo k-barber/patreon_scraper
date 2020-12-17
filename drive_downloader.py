@@ -1,4 +1,5 @@
 import requests
+import time
 
 def download_drive_item(id, destination):
     '''Downloads the file with the given id
@@ -24,18 +25,29 @@ def download_drive_item(id, destination):
 
     try:
         response = session.get(URL, params = { 'id' : id }, stream = True)
+
+        if (400 <= response.status_code < 600):
+            print("Failed to download item with ID: " + str(id))
+            print(response.url)
+            print(str(response.status_code))
+            print(response.headers)
+            wait = 60
+            print("Google refused our connection")
+            while (response.status_code != 200):
+                if (wait > 1000):
+                    return -1
+                print("Waiting " + str(wait) + " seconds and retrying")
+                time.sleep(wait)
+                print("Retrying")
+                response = session.get(URL, params = { 'id' : id }, stream = True)
+                wait = wait * 2
+
         token = get_confirm_token(response)
 
         if token:
             params = { 'id' : id, 'confirm' : token }
             response = session.get(URL, params = params, stream = True)
 
-        print(response.url)
-        print(str(response.status_code))
-        print(response.headers)
-        if response.status_code != 200:
-            print("Failed to download item with ID: " + str(id))
-            return -1
         save_response_content(response, destination)
         return 1
     except:

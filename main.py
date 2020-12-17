@@ -27,35 +27,57 @@ def download_drive_file(id, destination):
     global driver
     url = driver.current_url
     if (re.match(r"https://drive\.google\.com/file/d/" + str(id), url) == None):
+        time.sleep(1)
         driver.get("https://drive.google.com/file/d/" + str(id))
+    time.sleep(1)
     soup = BeautifulSoup(driver.page_source, 'html.parser')
     info = soup.find(id="drive-active-item-info")
 
     item_data = json.loads(info.contents[0])
     
-    file_extension = mimetypes.guess_extension(item_data['mimeType'])
+    file_extension = mimetypes.guess_extension(item_data['mimeType'], False)
 
     full_name = item_data['title']
     file_name = full_name[:full_name.rindex(".")]
     file_name = "".join([c for c in file_name if c.isalpha() or c.isdigit()]).rstrip()
 
+    guessed_extension = full_name[full_name.rindex("."):]
+
     pathlib.Path(destination).mkdir(parents=True, exist_ok=True)
-    location = destination + file_name + file_extension
-    result = download_drive_item(item_data['id'], location)
-    if (result > 0):
-        return url
+
+    if (file_extension == None):
+        # File is non-standard Mime Type, use what should be the extension from the file name
+        location = destination + file_name + guessed_extension
+        if (os.path.isfile(location)):
+            repeat = 1
+            while (os.path.isfile(location)):
+                location = destination + file_name + " (" + str(repeat) + ")" + guessed_extension
+                repeat = repeat + 1
     else:
+        location = destination + file_name + file_extension
+        if (os.path.isfile(location)):
+            repeat = 1
+            while (os.path.isfile(location)):
+                location = destination + file_name + " (" + str(repeat) + ")" + file_extension
+                repeat = repeat + 1
+    
+    result = download_drive_item(item_data['id'], location)
+    if (result == -1):
         return -1
+    else:
+        return id
 
 def download_drive_folder(id, folder_name, destination):
     global driver
     url = driver.current_url
     if (re.match(r"https://drive\.google\.com/drive/folders/" + str(id), url) == None):
+        time.sleep(1)
         driver.get("https://drive.google.com/drive/folders/" + str(id))
+    time.sleep(1)
     soup = BeautifulSoup(driver.page_source, 'html.parser')
     docs = soup.find_all(attrs={"data-target":"doc", "data-id": re.compile("\w*")})
 
-    print("Making folder: " + destination)
+    if debug: print("Making folder: " + destination)
     pathlib.Path(destination).mkdir(parents=True, exist_ok=True)
 
     subfolders = []
@@ -63,34 +85,43 @@ def download_drive_folder(id, folder_name, destination):
 
     error_code = None
 
+    if (docs == None):
+        if debug: print("ERROR scraping folder")
+        time.sleep(60)
+        return download_drive_folder(id, folder_name, destination)
+
     for doc in docs:
         data_id = doc.get("data-id")
-        print(str(data_id))
+        if debug: print("found data-id: " + str(data_id))
         download_button = doc.find(attrs={"aria-label":"Download"})
         folder_label = doc.find(attrs={"aria-label": re.compile("Google Drive Folder")})
         if (folder_label):
-            print("ID is folder")
+            if debug: print("ID is folder")
             label_text = folder_label.get("aria-label")
             # Labels are in form "subfolder name Google Drive Folder"
             sub_folder_name = label_text[:label_text.index(" Google Drive Folder")]
             subfolders.append({"ID" : data_id, "name":sub_folder_name})
         else:
-            print("ID is not folder")
+            if debug: print("ID is not folder")
             files.append(data_id)
             
     for data_id in files:
         time.sleep(2)
+        if debug: print("Downloading File: " + data_id)
         result = download_drive_file(data_id, destination)
+        if debug: print("Result: " + result)
         if (result == -1):
             error_code = -1
     for subfolder in subfolders:
         time.sleep(2)
+        if debug: print("Downloading Folder: " + subfolder["ID"])
         response = download_drive_folder(subfolder["ID"], subfolder["name"], destination + subfolder["name"] + "/" )
+        if debug: print("Response: " + response)
         if (response == -1):
             error_code = -1
     if (error_code):
         return error_code
-    return url
+    return id
 
 def scrape_google_link(link, folder):
     global driver
@@ -295,7 +326,7 @@ def main():
     global scraped_external_links
 
     
-    posts_url = "https://www.patreon.com/AldhaRoku/posts"
+    posts_url = "https://www.patreon.com/lindaroze/posts"
     start_year = 2020
     end_year = 2020
     start_month = 11
@@ -362,6 +393,7 @@ def main():
     
     fp = webdriver.FirefoxProfile()
     fp.set_preference("browser.download.folderList", 2)
+    fp.set_preference("general.useragent.override", "K-Barber's Patreon Scraper")
     fp.set_preference("browser.download.dir", os.getcwd() + "\\scraped")
     fp.set_preference("browser.download.manager.showWhenStarting", False)
     fp.set_preference("browser.download.manager.showAlertOnComplete", False)
@@ -373,9 +405,6 @@ def main():
 
     driver = webdriver.Firefox(firefox_profile=fp, seleniumwire_options=options)
     WebDriverWait(driver, 5)
-
-    scrape_google_link("https://drive.google.com/drive/folders/1mx92hkkZXLbi1JIjm6PELj3a48jMgcJx", os.getcwd() + "/scraped/")
-    return
     driver.get(posts_url)
 
     if (os.path.isfile("patreon_cookie.pkl")):
@@ -383,11 +412,9 @@ def main():
             driver.add_cookie(cookie)
         driver.get(posts_url)
 
-    '''
     var = ""
     while (var.lower() != "y"):
         var = input("Done logging in? (Y/N)")
-    '''
 
     pickle.dump(driver.get_cookies(), open("patreon_cookie.pkl", "wb"))
     
