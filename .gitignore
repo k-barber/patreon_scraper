@@ -10,3 +10,4 @@ build
 dist
 __pycache__/*
 test.py
+TO DO.txt

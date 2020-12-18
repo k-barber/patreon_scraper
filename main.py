@@ -17,6 +17,8 @@ import os
 import pathlib
 import pickle 
 import sys
+import getopt
+import datetime
 import requests
 
 driver = None
@@ -29,7 +31,7 @@ def download_drive_file(id, destination):
     url = driver.current_url
     if (re.match(r"https://drive\.google\.com/file/d/" + str(id), url) == None):
         time.sleep(1)
-        driver.get("https://drive.google.com/file/d/" + str(id))
+        get_url("https://drive.google.com/file/d/" + str(id))
     time.sleep(1)
     soup = BeautifulSoup(driver.page_source, 'html.parser')
     info = soup.find(id="drive-active-item-info")
@@ -73,7 +75,7 @@ def download_drive_folder(id, folder_name, destination):
     url = driver.current_url
     if (re.match(r"https://drive\.google\.com/drive/folders/" + str(id), url) == None):
         time.sleep(1)
-        driver.get("https://drive.google.com/drive/folders/" + str(id))
+        get_url("https://drive.google.com/drive/folders/" + str(id))
     time.sleep(1)
     soup = BeautifulSoup(driver.page_source, 'html.parser')
     docs = soup.find_all(attrs={"data-target":"doc", "data-id": re.compile("\w*")})
@@ -129,10 +131,10 @@ def scrape_google_link(link, folder):
     global scraped_external_links
 
     link_type = None
-    if re.match(r"https://drive\.google\.com/file/d/.*(/view|/edit)", link):
+    if re.match(r"(https?://)?(www\.)?drive\.google\.com/file/d/.*(/view|/edit)", link):
         link_type = "file"
     else:
-        driver.get(link)
+        get_url(link)
         url = driver.current_url
         if (url.find("folder") != -1):
             link_type = "folder"
@@ -209,7 +211,7 @@ def scrape_dropbox_link(link, folder):
 def scrape_mega_link(link, folder):
     global driver
     global scraped_external_links
-    driver.get(link)
+    get_url(link)
     link_type = None
     try:
         WebDriverWait(driver, 5).until(
@@ -277,7 +279,7 @@ def scrape_month(query_url, sentinel_url = None):
 
     found_sentinel = False
 
-    driver.get(query_url)
+    get_url(query_url)
     height = driver.execute_script("return document.body.scrollHeight")
     x = 0
     stop = False
@@ -370,66 +372,12 @@ def scrape_month(query_url, sentinel_url = None):
     if debug: print("Found Sentinel? " + str(found_sentinel))
     return found_sentinel
     
-
-
-def main():
+def initialize_browser():
     global driver
-    global post_links
-    global scraped_external_links
-    
-    var = None
-    while (var == None):
-        var = input("Enter a patreon posts tab URL (patreon.com/account/posts):")
-        matched = re.match(r"^(https?://)?(www.)?patreon.com\/([a-zA-Z0-9_]*)\/posts$", var)
-        if (matched):
-            posts_url = var
-        else:
-            var = None
-    
-    var = None
-    while (var == None):
-        var = input("Enter a start date (YYYY/MM):")
-        matched = re.match(r"^\d\d\d\d/\d\d$", var)
-        if (matched):
-            start_date = var
-            start_year = int(start_date[0:4])
-            start_month = int(start_date[5:])
-            if (start_month > 12 or start_month < 1):
-                print("months must be between 1 and 12")
-                var = None
-                continue
-        else:
-            var = None
-        
-    var = None
-    while (var == None):
-        var = input("Enter an end date (YYYY/MM):")
-        matched = re.match(r"^\d\d\d\d/\d\d$", var)
-        if (matched):
-            end_date = var
-            end_year = int(end_date[0:4])
-            end_month = int(end_date[5:])
-            if (end_year < start_year):
-                print("end year must be after start year")
-                var = None
-                continue
-            if (end_year == start_year) & (end_month < start_month):
-                print("end month must be after start month")
-                var = None
-                continue
-            if (end_month > 12 or end_month < 1):
-                print("months must be between 1 and 12")
-                var = None
-                continue
-        else:
-            var = None
-    
-    if (debug):
-        print("Url: " + str(posts_url))
-        print("Start Date: " + str(start_date))
-        print("End Date: " + str(end_date))
-    
-    
+
+    if (driver != None):
+        return
+
     options = {
         'connection_timeout': None  # Never timeout
     }
@@ -448,21 +396,125 @@ def main():
 
     driver = webdriver.Firefox(firefox_profile=fp, seleniumwire_options=options)
     WebDriverWait(driver, 5)
-    driver.get(posts_url)
+    get_url("https://www.patreon.com")
 
     if (os.path.isfile("patreon_cookie.pkl")):
         for cookie in pickle.load(open("patreon_cookie.pkl", "rb")):
             driver.add_cookie(cookie)
-        driver.get(posts_url)
-
-    var = ""
-    while (var.lower() != "y"):
-        var = input("Done logging in? (Y/N)")
-
+        get_url("https://www.patreon.com/login")
+        if (driver.current_url == "https://www.patreon.com/home"):
+            pickle.dump(driver.get_cookies(), open("patreon_cookie.pkl", "wb"))
+            return
+        else:
+            var = ""
+            while (var.lower() != "y"):
+                var = input("Done logging in? (Y/N)")
+    else:
+        var = ""
+        while (var.lower() != "y"):
+            var = input("Done logging in? (Y/N)")
+        
     pickle.dump(driver.get_cookies(), open("patreon_cookie.pkl", "wb"))
+
+def get_url(url = ""):
+    global driver
+    if (driver != None):
+        if (url.startswith("https://")):
+            driver.get(url)
+        else:
+            if (url.startswith("http://")):
+                driver.get("https://" + url[7:])
+            else:
+                driver.get("https://" + url)
+
+def get_user_variables(patreon_url = None, start_date = None, end_date = None):
+    if (patreon_url):
+        var = patreon_url
+        scrape_url = patreon_url
+    else: 
+        var = None
+    while (var == None):
+        var = input("Enter a patreon posts tab URL (patreon.com/account/posts):")
+        matched = re.match(r"^(https?://)?(www.)?patreon.com\/([a-zA-Z0-9_]*)\/posts$", var)
+        if (matched):
+            scrape_url = var
+        else:
+            var = None
+
+    if (start_date):
+        var = start_date
+        start_year = int(start_date[0:4])
+        start_month = int(start_date[5:])
+    else:
+        var = None
+    while (var == None):
+        var = input("Enter a start date (YYYY/MM):")
+        matched = re.match(r"^\d\d\d\d/\d\d$", var)
+        if (matched):
+            start_date = var
+            start_year = int(start_date[0:4])
+            start_month = int(start_date[5:])
+            if ((start_year, month) < (2013, 5)):
+                print("Start date must be no earlier than 2013/05 (Patreon's launch date)")
+                var = None
+                continue
+            if (start_month > 12 or start_month < 1):
+                print("months must be between 1 and 12")
+                var = None
+                continue
+            today = datetime.datetime.today().date()
+            if ((start_year, start_month) > (today.year, today.month)):
+                print("Start date must be no later than " + str(today.year) + "/" + str(today.month) + " (the current month)")
+                var = None
+                continue
+        else:
+            print("Must be of format: YYYY/MM")
+            var = None
     
+        
+    if (end_date):
+        var = end_date
+        end_year = int(end_date[0:4])
+        end_month = int(end_date[5:])
+    else:
+        var = None
+    while (var == None):
+        var = input("Enter an end date (YYYY/MM):")
+        matched = re.match(r"^\d\d\d\d/\d\d$", var)
+        if (matched):
+            end_date = var
+            end_year = int(end_date[0:4])
+            end_month = int(end_date[5:])
+            if ((end_year, end_month) < (start_year, start_month)): 
+                print("End date must be after start date")
+                var = None
+                continue
+            if (end_month > 12 or end_month < 1):
+                print("months must be between 1 and 12")
+                var = None
+                continue
+            if ((end_year, end_month) < (2013, 5)):
+                print("End date must be no earlier than 2013/05 (Patreon's launch date)")
+                var = None
+                continue
+            today = datetime.datetime.today().date()
+            if ((end_year, end_month) > (today.year, today.month)):
+                print("End date must be no later than " + str(today.year) + "/" + str(today.month) + " (the current month)")
+                var = None
+                continue
+        else:
+            print("Must be of format: YYYY/MM")
+            var = None
+    
+    if (debug):
+        print(str((scrape_url, start_year, start_month, end_year, end_month)))
+    
+    return (scrape_url, start_year, start_month, end_year, end_month)
+    
+
+def get_post_urls(patreon_url, start_year, start_month, end_year, end_month):
     post_links = []
-    '''
+    
     for year in range(start_year, end_year+1):
         if (year == start_year):
             loop_start_month = start_month
@@ -475,7 +527,7 @@ def main():
         
         for month in range(loop_start_month, loop_end_month):
             if (debug): print(str(year) + "-" + str(month))
-            query_url = posts_url + "?filters[month]=" + str(year) + "-" + str(month)
+            query_url = patreon_url + "?filters[month]=" + str(year) + "-" + str(month)
             if (debug): print(query_url)
             inversion_url = query_url + "&sort=published_at"
             if (debug): print(inversion_url)
@@ -505,10 +557,17 @@ def main():
 
     with open('post_links.txt', mode="wt", encoding="utf-8") as myfile:
         myfile.write('\n'.join(post_links))
-    '''
+
+    return post_links
+
+def get_post_urls_from_file():
+    post_links = []
     with open('post_links.txt', mode="rt") as f:
         post_links = f.read().splitlines()
+    return post_links
 
+
+def scrape_links(post_links):
     pathlib.Path(os.getcwd()+ "/scraped/").mkdir(parents=True, exist_ok=True)
 
     for post_link in post_links:
@@ -516,7 +575,7 @@ def main():
         wait = 60
         while not successful:
             try:
-                driver.get(post_link)
+                get_url(post_link)
                 soup = BeautifulSoup(driver.page_source, 'html.parser')
 
                 #title = soup.find(attrs={"data-tag":"post-title"})
@@ -687,7 +746,7 @@ def main():
                                 scraped_external_links.append(result)
                             elif (result in scraped_external_links):
                                 duplicate_links.append(result)
-                    output = open(path, "at")
+                    output = open(path, "at", encoding="utf-8")
                     output.write("----- " + time.strftime("%Y/%m/%d - %H:%M:%S", time.localtime()) + " -----\n")
                     for line in content.strings:
                         output.write(str(line) + "\n")
@@ -712,7 +771,76 @@ def main():
                 WebDriverWait(driver, wait)
                 wait = wait * 2
 
+def main(argv):
+
+    print("Num arguments: ", len(argv))
+    print("Arguments: " + str(argv))
+
+    try:
+        opts, args = getopt.getopt(argv, "s: e: h u: c", ("start-date=", "end-date=", "help", "url=", "continue"))
+    except getopt.GetoptError:
+        print("Commands not recognized. To get help, use the following command:\n")
+        print("\t'main.exe -h'")
+        sys.exit(2)
+
+    load_from_file = False
+
+    start_date = None
+    end_date = None
+    patreon_url = None
+
+    for opt, arg in opts:
+        if (opt in ('-h', "--help")):
+            print("main.exe --start-date|-s <start-date (YYYY/MM)> --end-date|-e <end-date (YYYY/MM)>")
+            sys.exit()
+        elif opt in ("-c", "--continue"):
+            load_from_file = True
+        elif opt in ("-u", "--url"):
+            if (re.match(r"^(https?://)?(www.)?patreon.com\/([a-zA-Z0-9_]*)\/posts$", arg)):
+                patreon_url = arg
+            else:
+                print("URL must be in format: https://patreon.com/creator_name/posts")
+        elif opt in ("-s", "--start-date"):
+            if (re.match(r"\d\d\d\d/\d\d", arg)):
+                given_date = datetime.datetime(int(arg[0:4]), int(arg[5:]), 1).date()
+                patreon_start = datetime.datetime(2013, 5, 1).date()
+                today = datetime.datetime.today().date()
+                if (patreon_start <= given_date <= today):
+                    start_date = arg
+                else: 
+                    print("Start date must be between 2013/05 (Patreon's launch date) and the current month " + str(today.year) + "/" + str(today.month))
+                    sys.exit()
+            else:
+                print("start date must be in format 'YYYY/MM', ex: '2015/03'")
+                sys.exit(2)
+        elif opt in ("-e", "--end-date"):
+            if (re.match(r"\d\d\d\d/\d\d", arg)):
+                given_date = datetime.datetime(int(arg[0:4]), int(arg[5:]), 1).date()
+                patreon_start = datetime.datetime(2013, 5, 1).date()
+                today = datetime.datetime.today().date()
+                if (patreon_start <= given_date <= today):
+                    end_date = arg
+                else: 
+                    print("Start date must be between 2013/05 (Patreon's launch date) and the current month " + str(today.year) + "/" + str(today.month))
+                    sys.exit()
+            else:
+                print("start date must be in format 'YYYY/MM', ex: '2015/03'")
+                sys.exit(2)
+        else:
+            print("Found option: " + opt)
+
+    if (load_from_file == True):
+        post_urls = get_post_urls_from_file()
+        initialize_browser()
+    else:
+        results = get_user_variables(patreon_url, start_date, end_date)
+        initialize_browser()
+        post_urls = get_post_urls(*results)
+
+    scrape_links(post_urls)
+
     driver.close()
     exit()
 
-main()
+if __name__ == "__main__":
+    main(sys.argv[1:])
