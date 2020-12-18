@@ -17,6 +17,7 @@ import os
 import pathlib
 import pickle 
 import sys
+import requests
 
 driver = None
 debug = True
@@ -99,7 +100,7 @@ def download_drive_folder(id, folder_name, destination):
             if debug: print("ID is folder")
             label_text = folder_label.get("aria-label")
             # Labels are in form "subfolder name Google Drive Folder"
-            sub_folder_name = label_text[:label_text.index(" Google Drive Folder")]
+            sub_folder_name = label_text[:label_text.find(" Google Drive Folder")]
             subfolders.append({"ID" : data_id, "name":sub_folder_name})
         else:
             if debug: print("ID is not folder")
@@ -133,16 +134,16 @@ def scrape_google_link(link, folder):
     else:
         driver.get(link)
         url = driver.current_url
-        if (url.index("folder") != -1):
+        if (url.find("folder") != -1):
             link_type = "folder"
-        elif (url.index("file/d/") != -1):
+        elif (url.find("file/d/") != -1):
             link_type = "file"
         else: 
             print("Couldn't Identify")
             return -1
 
     if (link_type == "file"):
-        return download_drive_file(url[url.index("file/d/") + 7 : url.rindex("/")], folder + "Google_Drive/")
+        return download_drive_file(url[url.find("file/d/") + 7 : url.rindex("/")], folder + "Google_Drive/")
     elif (link_type == "folder"):
         response = download_drive_folder(url[url.rindex("/") + 1:], "Google_Drive",  folder + "Google_Drive/")
         if (response == url[url.rindex("/") + 1:]):
@@ -154,9 +155,56 @@ def scrape_google_link(link, folder):
     
 
 def scrape_dropbox_link(link, folder):
-    """https://www.dropbox.com/sh/fk9qnda0fgnrnzq/AAAEkVZ8fw-LgC10uWcgIqQLa?dl=0
-    https://www.dropbox.com/s/s1ayv4beoj9ishb/ElfL1owU0AM0KOt-orig.jpg?dl=0
-    """
+    q_spot = link.find("?")
+    if (q_spot > 1):
+        direct_link = link[:link.find("?")]
+    else:
+        direct_link = link
+
+
+    response = requests.get(direct_link, allow_redirects=False, stream=True, params = { 'dl' : 1 })
+
+    while (300 <= response.status_code < 600): # Not final request yet
+        if (400 <= response.status_code < 600):
+            print("Dropbox refused our connection")
+            print(response.url)
+            print(str(response.status_code))
+            print(response.headers)
+            repeat = 1
+            while (response.status_code != 200):
+                if (repeat > 3):
+                    return -1
+                print("Waiting " + str(5) + " seconds and retrying")
+                time.sleep(5)
+                print("Retrying")
+                response = requests.get(direct_link, stream = True, params = { 'dl' : 1 })
+                repeat = repeat + 1
+        elif (300 <= response.status_code < 400):
+            print("Dropbox redirected our connection")
+            redirect_URL2 = response.headers['Location']
+            if (redirect_URL2.find("/") == 0):
+                redirect_URL2 = "https://www.dropbox.com" + redirect_URL2
+            response = requests.get(redirect_URL2, allow_redirects=False, stream = True)
+
+    stuff = response.headers["content-disposition"]
+    start_index = stuff.find("\"") + 1
+    full_name = stuff[start_index: stuff.find("\"", start_index + 1 )]
+    file_name = full_name[:full_name.find(".")]
+    file_extension = full_name[full_name.find("."):]
+
+    location = folder + file_name + file_extension
+
+    if (os.path.isfile(location)):
+        repeat = 1
+        while (os.path.isfile(location)):
+            location = folder + file_name + " (" + str(repeat) + ")" + file_extension
+            repeat = repeat + 1
+
+    with open(location, "wb") as f:
+        for chunk in response.iter_content(chunk_size=1024):
+            if chunk:
+                f.write(chunk)
+    return link
 
 def scrape_mega_link(link, folder):
     global driver
@@ -236,6 +284,13 @@ def scrape_month(query_url, sentinel_url = None):
     old_href = None
     newest_href = None
 
+    soup = BeautifulSoup(driver.page_source, 'html.parser')
+
+    a_string = soup.find(string=re.compile(r"This filter has no posts\."))
+    if (a_string):
+        if debug: print("THIS MONTH HAS NO POSTS")
+        return True
+
     while (stop != True):
         while x < height:
             time.sleep(0.01)
@@ -256,28 +311,25 @@ def scrape_month(query_url, sentinel_url = None):
         loader = soup.find(attrs={"aria-label":"loading more posts"})
         if (loader): continue
 
-        titles = soup.find_all(attrs={'data-tag':'post-title'})
-        if debug: print("Titles found: ")
-        if debug: print(titles)
+        published_at_list = soup.find_all(attrs={'data-tag':'post-published-at'})
+        if debug: print("posts found: ")
+        if debug: print(published_at_list)
         unique_post_found = False
-        for link in titles:
-            a = link.find("a")
-            if debug: print("a: " + str(a))
-            if (a):
-                href = a.get('href')
-                if debug: print("href: " + href)
-                if debug: print(re.match(r"^https://www\.patreon\.com/posts/", href))
-                if (re.match(r"^https://www\.patreon\.com/posts/", href)):
-                    if debug: print("regex match")
-                    newest_href = href
-                    if (href == sentinel_url):
-                        if debug: print("FOUND SENTINEL")
-                        found_sentinel = True
-                        break
-                    if (href not in post_links):
-                        if debug: print("Unique Link: " + href)
-                        unique_post_found = True
-                        post_links.append(href)
+        for link in published_at_list:
+            href = link.get('href')
+            if debug: print("href: " + href)
+            if debug: print(re.match(r"^https://www\.patreon\.com/posts/", href))
+            if (re.match(r"^https://www\.patreon\.com/posts/", href)):
+                if debug: print("regex match")
+                newest_href = href
+                if (href == sentinel_url):
+                    if debug: print("FOUND SENTINEL")
+                    found_sentinel = True
+                    break
+                if (href not in post_links):
+                    if debug: print("Unique Link: " + href)
+                    unique_post_found = True
+                    post_links.append(href)
 
         #If we haven't seen the sentinel and we're not repeating post loads, keep searching
         keep_searching_for_sentinel = ((not found_sentinel) & (old_href != newest_href))
@@ -324,14 +376,6 @@ def main():
     global driver
     global post_links
     global scraped_external_links
-
-    
-    posts_url = "https://www.patreon.com/lindaroze/posts"
-    start_year = 2020
-    end_year = 2020
-    start_month = 11
-    end_month = 11
-    '''
     
     var = None
     while (var == None):
@@ -341,7 +385,6 @@ def main():
             posts_url = var
         else:
             var = None
-    
     
     var = None
     while (var == None):
@@ -386,7 +429,7 @@ def main():
         print("Start Date: " + str(start_date))
         print("End Date: " + str(end_date))
     
-    '''
+    
     options = {
         'connection_timeout': None  # Never timeout
     }
@@ -418,9 +461,8 @@ def main():
 
     pickle.dump(driver.get_cookies(), open("patreon_cookie.pkl", "wb"))
     
-    """
     post_links = []
-    
+    '''
     for year in range(start_year, end_year+1):
         if (year == start_year):
             loop_start_month = start_month
@@ -443,6 +485,7 @@ def main():
             found_sentinel = scrape_month(query_url)
 
             if (found_sentinel): # Reached the end of the month, don't need to invert
+                if (debug): print("Found end of month, don't reverse")
                 continue
 
             sentinel = post_links[-1] #Most recent post
@@ -462,8 +505,7 @@ def main():
 
     with open('post_links.txt', mode="wt", encoding="utf-8") as myfile:
         myfile.write('\n'.join(post_links))
-    """
-    
+    '''
     with open('post_links.txt', mode="rt") as f:
         post_links = f.read().splitlines()
 
@@ -542,8 +584,8 @@ def main():
                     print(url)
                     text = attachment_link.contents[0]
                     print(text)
-                    filename = text[:text.index(".")]
-                    fileextension = text[text.index("."):]
+                    filename = text[:text.find(".")]
+                    fileextension = text[text.find("."):]
 
                     # get the file via XMLHttpRequest to prevent system "save as" dialog
                     script = """
@@ -581,6 +623,8 @@ def main():
 
                 # If there are any links grab the post content (for Mega links with password)
                 content = soup.find(attrs={"data-tag":"post-content"})
+
+                # Scrape External G Drive, Dropbox and Mega links
                 if (content):
                     path = folder + "post-text.txt"
                     content_links = content.find_all("a")
@@ -605,17 +649,28 @@ def main():
                                             break
                                 pass 
                             elif (re.match(r"(https?://)?(www\.)?dropbox\.com", href)):
-                                print("Dropbox link")
+                                if (re.match(r"(https?://)?(www\.)?dropbox\.com/[/\S]+", href)):
+                                    print("Dropbox link")
+                                    result = scrape_dropbox_link(href, folder)
+                                else:
+                                    print("Incomplete Dropbox link")
+                                    strings = list(content.strings)
+                                    for num, line in enumerate(strings):
+                                        if re.match(r"(https?://)?(www\.)?dropbox\.com", line):
+                                            href = line + strings[num + 1]
+                                            print("complete link: " + href)
+                                            result = scrape_dropbox_link(href, folder)
+                                            break
                                 pass
-                            elif (re.match(r"(https?://)?(www\.)?mega\.nz/", href)):
-                                if (re.match(r"(https?://)?(www\.)?mega\.nz/(folder/\S*#|file/\S*#|#)", href)):
+                            elif (re.match(r"(https?://)?(www\.)?mega\.(co\.)?nz/", href)):
+                                if (re.match(r"(https?://)?(www\.)?mega\.(co\.)?nz/(folder/\S*#|file/\S*#|#)", href)):
                                     print("Complete Mega link")
                                     result = scrape_mega_link(href, folder)
                                 else:
                                     print("Incomplete MEGA link")
                                     strings = list(content.strings)
                                     for num, line in enumerate(strings):
-                                        if re.match(r"(https?://)?(www\.)?mega\.nz/", line):
+                                        if re.match(r"(https?://)?(www\.)?mega\.(co\.)?nz/", line):
                                             href = line + strings[num + 1]
                                             print("complete link: " + href)
                                             result = scrape_mega_link(href, folder)
