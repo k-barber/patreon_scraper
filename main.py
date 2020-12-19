@@ -54,14 +54,14 @@ def download_drive_file(id, destination):
         if (os.path.isfile(location)):
             repeat = 1
             while (os.path.isfile(location)):
-                location = destination + file_name + " (" + str(repeat) + ")" + guessed_extension
+                location = destination + file_name + "_" + str(repeat) + guessed_extension
                 repeat = repeat + 1
     else:
         location = destination + file_name + file_extension
         if (os.path.isfile(location)):
             repeat = 1
             while (os.path.isfile(location)):
-                location = destination + file_name + " (" + str(repeat) + ")" + file_extension
+                location = destination + file_name + "_" + str(repeat) + file_extension
                 repeat = repeat + 1
     
     result = download_drive_item(item_data['id'], location)
@@ -199,7 +199,7 @@ def scrape_dropbox_link(link, folder):
     if (os.path.isfile(location)):
         repeat = 1
         while (os.path.isfile(location)):
-            location = folder + file_name + " (" + str(repeat) + ")" + file_extension
+            location = folder + file_name + "_" + str(repeat) + file_extension
             repeat = repeat + 1
 
     with open(location, "wb") as f:
@@ -219,10 +219,18 @@ def scrape_mega_link(link, folder):
         )
         link_type = "file"
     except exceptions.TimeoutException:
+        print("Not a file")
         try:
+            print("Trying")
             WebDriverWait(driver, 30).until(
                 EC.presence_of_element_located((By.CLASS_NAME, "fm-right-files-block"))
             )
+            print("Found")
+            soup = BeautifulSoup(driver.page_source, "html.parser")
+            a_string = soup.find(string=re.compile(r"The folder link you are trying to access is no longer available\."))
+            if a_string:
+                print("MEGA REMOVED")
+                return -1
             link_type = "folder"
         except exceptions.TimeoutException:
             print("Couldn't Identify")
@@ -277,6 +285,8 @@ def scrape_month(query_url, sentinel_url = None):
     if (driver is None):
         return
 
+    print("Sentinel: ", sentinel_url)
+
     found_sentinel = False
 
     get_url(query_url)
@@ -296,14 +306,12 @@ def scrape_month(query_url, sentinel_url = None):
     while (stop != True):
         while x < height:
             time.sleep(0.01)
-            if debug: print("Scroll to: " + str(x))
             driver.execute_script("window.scrollTo(0, " + str(x) +");")
-            x = x + 100
-        time.sleep(3)
+            x = x + 500
+        time.sleep(0.05)
 
         new_height = driver.execute_script("return document.body.scrollHeight")
         if (new_height != height):
-            if debug: print("Page extended")
             height = new_height
             stop = False
             continue
@@ -314,16 +322,12 @@ def scrape_month(query_url, sentinel_url = None):
         if (loader): continue
 
         published_at_list = soup.find_all(attrs={'data-tag':'post-published-at'})
-        if debug: print("posts found: ")
-        if debug: print(published_at_list)
         unique_post_found = False
         for link in published_at_list:
             href = link.get('href')
-            if debug: print("href: " + href)
-            if debug: print(re.match(r"^https://www\.patreon\.com/posts/", href))
             if (re.match(r"^https://www\.patreon\.com/posts/", href)):
-                if debug: print("regex match")
                 newest_href = href
+                print("Found URL: ", href)
                 if (href == sentinel_url):
                     if debug: print("FOUND SENTINEL")
                     found_sentinel = True
@@ -334,9 +338,14 @@ def scrape_month(query_url, sentinel_url = None):
                     post_links.append(href)
 
         #If we haven't seen the sentinel and we're not repeating post loads, keep searching
-        keep_searching_for_sentinel = ((not found_sentinel) & (old_href != newest_href))
+        print("Found sentinel? " + str(found_sentinel))
+        keep_searching_for_sentinel = ((not found_sentinel) and (old_href != newest_href))
+        print("Old href ", old_href)
+        print("New href ", newest_href)
+        print("Keep searching: " + str(keep_searching_for_sentinel))
 
         if (unique_post_found or keep_searching_for_sentinel):
+            old_href = newest_href
             wait = 1
             loader = soup.find(attrs={"aria-label":"loading more posts"})
             while (loader): 
@@ -347,15 +356,11 @@ def scrape_month(query_url, sentinel_url = None):
                     break
             a_string = soup.find(string=re.compile(r"^Load more$"))
             if (a_string):
-                if debug: print(a_string)
                 button = a_string.find_parent("button")
-                if debug: print(button)
                 if(button):
                     class_list = button['class']
                     class_string = ".".join(class_list)
-                    if debug: print(class_string)
                     more_button = driver.find_element_by_class_name(class_string)
-                    if debug: print(more_button)
                     more_button.click()
                 else:
                     stop = True
@@ -513,6 +518,7 @@ def get_user_variables(patreon_url = None, start_date = None, end_date = None):
     
 
 def get_post_urls(patreon_url, start_year, start_month, end_year, end_month):
+    global post_links
     post_links = []
     
     for year in range(start_year, end_year+1):
@@ -548,10 +554,10 @@ def get_post_urls(patreon_url, start_year, start_month, end_year, end_month):
 
             # Go down the other way
 
-            found_sentinel = scrape_month(inversion_url)
+            found_sentinel = scrape_month(inversion_url, sentinel)
 
             while not found_sentinel:
-                found_sentinel = scrape_month(inversion_url)
+                found_sentinel = scrape_month(inversion_url, sentinel)
 
             if debug: print(post_links)
 
@@ -577,10 +583,6 @@ def scrape_links(post_links):
             try:
                 get_url(post_link)
                 soup = BeautifulSoup(driver.page_source, 'html.parser')
-
-                #title = soup.find(attrs={"data-tag":"post-title"})
-                #title = title.contents[0]
-                #title = "".join([c for c in title if c.isalpha() or c.isdigit()]).rstrip()
                 
                 title = post_link[post_link.rindex("/") + 1 :]
                 folder = os.getcwd()+ "/scraped/" + title + "/"
@@ -604,6 +606,11 @@ def scrape_links(post_links):
 
                         filename = image_url[image_url.rindex("/") + 1:image_url.rindex(".")]
 
+                        if (filename == "1"): # Patreon has a habit of renaming images to "1.png"
+                            post_title = soup.find(attrs={"data-tag":"post-title"})
+                            post_title = post_title.contents[0]
+                            filename = "".join([c for c in post_title if c.isalpha() or c.isdigit()]).rstrip()
+
                         fileextension = image_url[image_url.rindex("."):image_url.rindex("?")]
 
                         path = folder + filename + fileextension
@@ -612,7 +619,7 @@ def scrape_links(post_links):
                         if (os.path.isfile(path)):
                             repeat = 1
                             while (os.path.isfile(path)):
-                                path = folder + filename + " (" + str(repeat) + ")" + fileextension
+                                path = folder + filename + "_" + str(repeat) + fileextension
                                 repeat = repeat + 1
                     
                         output = open(path, "wb")
@@ -673,7 +680,7 @@ def scrape_links(post_links):
                         if (os.path.isfile(path)):
                             repeat = 1
                             while (os.path.isfile(path)):
-                                path = folder + filename + " (" + str(repeat) + ")" + fileextension
+                                path = folder + filename + "_" + str(repeat) + fileextension
                                 repeat = repeat + 1
                     
                         output = open(path, "wb")
