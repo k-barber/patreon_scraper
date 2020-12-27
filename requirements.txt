@@ -3,6 +3,7 @@ beautifulsoup4==4.9.3
 bs4==0.0.1
 certifi==2020.12.5
 chardet==3.0.4
+file-share-scrapers-k-barber @ git+https://github.com/k-barber/file_share_scrapers@c741d048c0b3ad4d95a10d572177b90a645b29b2
 future==0.18.2
 idna==2.10
 pefile==2019.4.18

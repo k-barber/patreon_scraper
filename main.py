@@ -3,14 +3,8 @@ from selenium.webdriver.firefox.options import Options
 from selenium.common import exceptions
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.firefox import firefox_profile
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support import expected_conditions as EC
 from bs4 import BeautifulSoup
-from binascii import a2b_base64
-from drive_downloader import download_drive_item
-import json
-import mimetypes
-import shutil
+import file_share_scrapers.scrapers as scrapers
 import time
 import re
 import os
@@ -27,279 +21,6 @@ debug = True
 post_links = []
 scraped_external_links = []
 one_folder = False
-
-def download_drive_file(id, destination):
-    global driver
-    url = driver.current_url
-    if (re.match(r"https://drive\.google\.com/file/d/" + str(id), url) == None):
-        time.sleep(1)
-        get_url("https://drive.google.com/file/d/" + str(id))
-    time.sleep(1)
-    soup = BeautifulSoup(driver.page_source, 'html.parser')
-    info = soup.find(id="drive-active-item-info")
-
-    properly_escaped_string = info.contents[0].replace("\/", "/")
-    item_data = json.loads(properly_escaped_string)
-
-    file_extension = None
-    file_extensions = mimetypes.guess_all_extensions(item_data['mimeType'], False)
-    if (len(file_extensions) >= 1):
-        file_extension = file_extensions[-1] # get the extension that was added to the dictionary first, as it is most likely to be accurate
-
-    full_name = item_data['title']
-    file_name = full_name[:full_name.rindex(".")]
-    file_name = "".join([c for c in file_name if c.isalpha() or c.isdigit()]).rstrip()
-
-    guessed_extension = full_name[full_name.rindex("."):]
-
-    pathlib.Path(destination).mkdir(parents=True, exist_ok=True)
-
-    if (file_extension == None):
-        # File is non-standard Mime Type, use what should be the extension from the file name
-        location = destination + file_name + guessed_extension
-        if (os.path.isfile(location)):
-            repeat = 1
-            while (os.path.isfile(location)):
-                location = destination + file_name + "_" + str(repeat) + guessed_extension
-                repeat = repeat + 1
-    else:
-        location = destination + file_name + file_extension
-        if (os.path.isfile(location)):
-            repeat = 1
-            while (os.path.isfile(location)):
-                location = destination + file_name + "_" + str(repeat) + file_extension
-                repeat = repeat + 1
-    
-    result = download_drive_item(item_data['id'], location)
-    if (result == -1):
-        return -1
-    else:
-        return id
-
-def download_drive_folder(id, folder_name, destination):
-    global driver
-    global one_folder
-
-    url = driver.current_url
-    if (re.match(r"https://drive\.google\.com/drive/folders/" + str(id), url) == None):
-        time.sleep(1)
-        get_url("https://drive.google.com/drive/folders/" + str(id))
-    time.sleep(1)
-    soup = BeautifulSoup(driver.page_source, 'html.parser')
-    docs = soup.find_all(attrs={"data-target":"doc", "data-id": re.compile("\w*")})
-
-    if debug: print("Making folder: " + destination)
-    pathlib.Path(destination).mkdir(parents=True, exist_ok=True)
-
-    subfolders = []
-    files = []
-
-    error_code = None
-
-    if (docs == None):
-        if debug: print("ERROR scraping folder")
-        time.sleep(60)
-        return download_drive_folder(id, folder_name, destination)
-
-    for doc in docs:
-        data_id = doc.get("data-id")
-        if debug: print("found data-id: " + str(data_id))
-        download_button = doc.find(attrs={"aria-label":"Download"})
-        folder_label = doc.find(attrs={"aria-label": re.compile("Google Drive Folder")})
-        if (folder_label):
-            if debug: print("ID is folder")
-            label_text = folder_label.get("aria-label")
-            # Labels are in form "subfolder name Google Drive Folder"
-            sub_folder_name = label_text[:label_text.find(" Google Drive Folder")]
-            subfolders.append({"ID" : data_id, "name":sub_folder_name})
-        else:
-            if debug: print("ID is not folder")
-            files.append(data_id)
-            
-    for data_id in files:
-        time.sleep(2)
-        if debug: print("Downloading File: " + data_id)
-        result = download_drive_file(data_id, destination)
-        if debug: print("Result: " + result)
-        if (result == -1):
-            error_code = -1
-    for subfolder in subfolders:
-        time.sleep(2)
-        if debug: print("Downloading Folder: " + subfolder["ID"])
-        if (one_folder):
-            location = destination
-        else:
-            location = destination + subfolder["name"] + "/"
-        response = download_drive_folder(subfolder["ID"], subfolder["name"], location)
-        if debug: print("Response: " + response)
-        if (response == -1):
-            error_code = -1
-    if (error_code):
-        return error_code
-    return id
-
-def scrape_google_link(link, folder):
-    global driver
-    global scraped_external_links
-    global one_folder
-
-    link_type = None
-    if re.match(r"(https?://)?(www\.)?drive\.google\.com/file/d/.*(/view|/edit)", link):
-        link_type = "file"
-        url = link
-    else:
-        get_url(link)
-        url = driver.current_url
-        if (url.find("folder") != -1):
-            link_type = "folder"
-        elif (url.find("file/d/") != -1):
-            link_type = "file"
-        else: # even /open/ links eventually redirect to /file/ or /folder/
-            soup = BeautifulSoup(driver.page_source, "html.parser")
-            a_string = soup.find(string=re.compile(r"404"))
-            if a_string:
-                print("File has been removed")
-                return -1
-            print("Couldn't Identify")
-            return -1
-
-    if (one_folder):
-        location = folder
-    else:
-        location = folder + "Google_Drive/"
-
-    if (link_type == "file"):
-        return download_drive_file(url[url.find("file/d/") + 7 : url.rindex("/")], location)
-    elif (link_type == "folder"):
-        response = download_drive_folder(url[url.rindex("/") + 1:], "Google_Drive",  location)
-        if (response == url[url.rindex("/") + 1:]):
-            return url
-        else :
-            return -1
-    else:
-        return -1
-    
-
-def scrape_dropbox_link(link, folder):
-    q_spot = link.find("?")
-    if (q_spot > 1):
-        direct_link = link[:link.find("?")]
-    else:
-        direct_link = link
-
-
-    response = requests.get(direct_link, allow_redirects=False, stream=True, params = { 'dl' : 1 })
-
-    while (300 <= response.status_code < 600): # Not final request yet
-        if (400 <= response.status_code < 600):
-            print("Dropbox refused our connection")
-            print(response.url)
-            print(str(response.status_code))
-            print(response.headers)
-            repeat = 1
-            while (response.status_code != 200):
-                if (repeat > 3):
-                    return -1
-                print("Waiting " + str(5) + " seconds and retrying")
-                time.sleep(5)
-                print("Retrying")
-                response = requests.get(direct_link, stream = True, params = { 'dl' : 1 })
-                repeat = repeat + 1
-        elif (300 <= response.status_code < 400):
-            print("Dropbox redirected our connection")
-            redirect_URL2 = response.headers['Location']
-            if (redirect_URL2.find("/") == 0):
-                redirect_URL2 = "https://www.dropbox.com" + redirect_URL2
-            response = requests.get(redirect_URL2, allow_redirects=False, stream = True)
-
-    stuff = response.headers["content-disposition"]
-    start_index = stuff.find("\"") + 1
-    full_name = stuff[start_index: stuff.find("\"", start_index + 1 )]
-    file_name = full_name[:full_name.find(".")]
-    file_extension = full_name[full_name.find("."):]
-
-    location = folder + file_name + file_extension
-
-    if (os.path.isfile(location)):
-        repeat = 1
-        while (os.path.isfile(location)):
-            location = folder + file_name + "_" + str(repeat) + file_extension
-            repeat = repeat + 1
-
-    with open(location, "wb") as f:
-        for chunk in response.iter_content(chunk_size=1024):
-            if chunk:
-                f.write(chunk)
-    return link
-
-def scrape_mega_link(link, folder):
-    global driver
-    global scraped_external_links
-    get_url(link)
-    link_type = None
-    try:
-        WebDriverWait(driver, 5).until(
-            EC.presence_of_element_located((By.CLASS_NAME, "transfer-wrapper"))
-        )
-        link_type = "file"
-    except exceptions.TimeoutException:
-        print("Not a file")
-        try:
-            print("Trying")
-            WebDriverWait(driver, 30).until(
-                EC.presence_of_element_located((By.CLASS_NAME, "fm-right-files-block"))
-            )
-            print("Found")
-            soup = BeautifulSoup(driver.page_source, "html.parser")
-            a_string = soup.find(string=re.compile(r"The folder link you are trying to access is no longer available\."))
-            if a_string:
-                print("MEGA REMOVED")
-                return -1
-            link_type = "folder"
-        except exceptions.TimeoutException:
-            print("Couldn't Identify")
-            return -1
-    
-    if (link_type == "file"):
-        download_button = driver.find_element_by_css_selector(".download.big-button.button.download-file.green.transition")
-        WebDriverWait(driver, 20).until(
-            EC.visibility_of(download_button)
-        )
-        url = driver.current_url
-        print("Scraping Mega url: " + url)
-        if (url in scraped_external_links):
-            print("DUPLICATE URL DETECTED")
-            return url
-        download_button.click()
-        time.sleep(1)
-        complete_notice = driver.find_element_by_css_selector(".download.main-transfer-info .download.complete-block")
-        WebDriverWait(driver, 1800).until(
-            EC.visibility_of(complete_notice)
-        )
-    elif (link_type == "folder"):
-        download_button = driver.find_element_by_css_selector(".button.link-button.right.fm-download-as-zip")
-        WebDriverWait(driver, 20).until(
-            EC.visibility_of(download_button)
-        )
-        url = driver.current_url
-        print("Scraping Mega url: " + url)
-        if (url in scraped_external_links):
-            print("DUPLICATE URL DETECTED")
-            return url
-        download_button.click()
-        time.sleep(0.05)
-        WebDriverWait(driver, 1800).until(
-            EC.text_to_be_present_in_element((By.CLASS_NAME, "transfer-task-status"), "Completed")
-        )
-    else:
-        return -1
-    driver.get("about:downloads")
-    fileName = driver.execute_script("return document.querySelector('#contentAreaDownloadsView .downloadMainArea .downloadContainer description:nth-of-type(1)').value")
-    old_location = os.getcwd()+ "/scraped/" + fileName
-    new_location = folder + fileName
-    time.sleep(2) # Wait for the file to be completely written
-    shutil.move(old_location, new_location)
-    return url
 
 def scrape_month(query_url, sentinel_url = None):
     '''sentinel_url - the URL that must be seen when going in reverse
@@ -599,6 +320,7 @@ def get_post_urls_from_file():
 
 def scrape_links(post_links):
     global one_folder
+    scrapers.set_driver(driver)
     pathlib.Path(os.getcwd()+ "/scraped/").mkdir(parents=True, exist_ok=True)
 
     for post_link in post_links:
@@ -758,7 +480,7 @@ def scrape_links(post_links):
                                     if (re.match(r"(https?://)?(www\.)?drive\.google\.com/(file/d/\S*|drive/folders/\S*|open\?id=\S*)", href)):
                                         print("Complete Google Drive link")
                                         print(href)
-                                        result = scrape_google_link(href, folder)
+                                        result = scrapers.scrape_google_link(href, folder, one_folder, scraped_external_links)
                                     else: 
                                         print("Incomplete Google Drive link")
                                         for num, line in enumerate(strings):
@@ -768,13 +490,13 @@ def scrape_links(post_links):
                                                     rest_of_link = rest_of_link[:rest_of_link.find(" ")].strip()
                                                 href = line + rest_of_link
                                                 print("complete link: " + href)
-                                                result = scrape_google_link(href, folder)
+                                                result = scrapers.scrape_google_link(href, folder, one_folder, scraped_external_links)
                                                 break
                                     pass 
                                 elif (re.match(r"(https?://)?(www\.)?dropbox\.com", href)):
                                     if (re.match(r"(https?://)?(www\.)?dropbox\.com/[/\S]+", href)):
                                         print("Dropbox link")
-                                        result = scrape_dropbox_link(href, folder)
+                                        result = scrape_dropbox_link(href, folder, one_folder, scraped_external_links)
                                     else:
                                         print("Incomplete Dropbox link")
                                         for num, line in enumerate(strings):
@@ -784,13 +506,13 @@ def scrape_links(post_links):
                                                     rest_of_link = rest_of_link[:rest_of_link.find(" ")].strip()
                                                 href = line + rest_of_link
                                                 print("complete link: " + href)
-                                                result = scrape_dropbox_link(href, folder)
+                                                result = scrapers.scrape_dropbox_link(href, folder, one_folder, scraped_external_links)
                                                 break
                                     pass
                                 elif (re.match(r"(https?://)?(www\.)?mega\.(co\.)?nz/", href)):
                                     if (re.match(r"(https?://)?(www\.)?mega\.(co\.)?nz/(folder/\S*#|file/\S*#|#)", href)):
                                         print("Complete Mega link")
-                                        result = scrape_mega_link(href, folder)
+                                        result = scrapers.scrape_mega_link(href, folder, one_folder, scraped_external_links)
                                     else:
                                         print("Incomplete MEGA link")
                                         for num, line in enumerate(strings):
@@ -800,7 +522,7 @@ def scrape_links(post_links):
                                                     rest_of_link = rest_of_link[:rest_of_link.find(" ")].strip()
                                                 href = line + rest_of_link
                                                 print("complete link: " + href)
-                                                result = scrape_mega_link(href, folder)
+                                                result = scrapers.scrape_mega_link(href, folder, one_folder, scraped_external_links)
                                                 break
                                 else:
                                     result = -1
