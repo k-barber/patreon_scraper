@@ -38,7 +38,7 @@ def download_drive_file(id, destination):
     soup = BeautifulSoup(driver.page_source, 'html.parser')
     info = soup.find(id="drive-active-item-info")
 
-    properly_escaped_string = info.contents[0].encode('latin1').decode('unicode-escape').encode('latin1').decode("utf-8")
+    properly_escaped_string = info.contents[0].replace("\/", "/")
     item_data = json.loads(properly_escaped_string)
 
     file_extension = None
@@ -146,6 +146,7 @@ def scrape_google_link(link, folder):
     link_type = None
     if re.match(r"(https?://)?(www\.)?drive\.google\.com/file/d/.*(/view|/edit)", link):
         link_type = "file"
+        url = link
     else:
         get_url(link)
         url = driver.current_url
@@ -310,7 +311,8 @@ def scrape_month(query_url, sentinel_url = None):
 
     print("Sentinel: ", sentinel_url)
 
-    found_sentinel = False
+    found_sentinel = None
+    found_links = []
 
     get_url(query_url)
     height = driver.execute_script("return document.body.scrollHeight")
@@ -324,7 +326,8 @@ def scrape_month(query_url, sentinel_url = None):
     a_string = soup.find(string=re.compile(r"This filter has no posts\."))
     if (a_string):
         if debug: print("THIS MONTH HAS NO POSTS")
-        return True
+        found_sentinel = "No Posts"
+        stop = True
 
     while (stop != True):
         while x < height:
@@ -336,7 +339,6 @@ def scrape_month(query_url, sentinel_url = None):
         new_height = driver.execute_script("return document.body.scrollHeight")
         if (new_height != height):
             height = new_height
-            stop = False
             continue
 
         soup = BeautifulSoup(driver.page_source, 'html.parser')
@@ -352,22 +354,32 @@ def scrape_month(query_url, sentinel_url = None):
                 newest_href = href
                 if (href == sentinel_url):
                     if debug: print("FOUND SENTINEL")
-                    found_sentinel = True
+                    found_sentinel = "Found Sentinel"
                     break
                 if (href not in post_links):
                     if debug: print("Unique Link: " + href)
+                    if (sentinel_url == None):
+                        found_sentinel = href
                     unique_post_found = True
                     post_links.append(href)
+                    found_links.append(href)
 
-        #If we haven't seen the sentinel and we're not repeating post loads, keep searching
-        print("Found sentinel? " + str(found_sentinel))
-        keep_searching_for_sentinel = ((not found_sentinel) and (old_href != newest_href))
-        print("Old href ", old_href)
-        print("New href ", newest_href)
-        print("Keep searching: " + str(keep_searching_for_sentinel))
+        if (found_sentinel == "Found Sentinel"):
+            break
+        elif (old_href == newest_href):
+            if (sentinel_url == None):
+                if (found_links == []):
+                    found_sentinel = "No Posts"
+                break
+            else:
+                found_sentinel = "Did not find sentinel"
+                break
+            break
+        else:
 
-        if (unique_post_found or keep_searching_for_sentinel):
             old_href = newest_href
+
+            # Wait for loading to finish before checking for button
             wait = 1
             loader = soup.find(attrs={"aria-label":"loading more posts"})
             while (loader): 
@@ -376,27 +388,22 @@ def scrape_month(query_url, sentinel_url = None):
                 wait = wait * 2
                 if (wait > 120):
                     break
+
             a_string = soup.find(string=re.compile(r"^Load more$"))
             if (a_string):
                 button = a_string.find_parent("button")
-                if(button):
+                if (button):
                     class_list = button['class']
                     class_string = ".".join(class_list)
                     more_button = driver.find_element_by_class_name(class_string)
                     more_button.click()
-                else:
-                    stop = True
-            else:
-                # No "Load more Button" - has reached the end
-                if (sentinel_url == None):
-                    found_sentinel = True 
-                stop = True
-        else:
+                    continue
+
+            # No loading button, no load more button, therefore end of month 
+            found_sentinel = "End of Month"
             stop = True
     
-    if debug: print(post_links)
-
-    if debug: print("Found Sentinel? " + str(found_sentinel))
+    if debug: print(found_links)
     return found_sentinel
     
 def initialize_browser():
@@ -565,19 +572,17 @@ def get_post_urls(patreon_url, start_year, start_month, end_year, end_month):
 
             found_sentinel = scrape_month(query_url)
 
-            if (found_sentinel): # Reached the end of the month, don't need to invert
+            if (found_sentinel == "No Posts" or found_sentinel == "End of Month"):
                 if (debug): print("Found end of month, don't reverse")
                 continue
-
-            sentinel = post_links[-1] #Most recent post
-
+            
             time.sleep(1)
 
             # Go down the other way
 
-            found_sentinel = scrape_month(inversion_url, sentinel)
+            found_sentinel = scrape_month(inversion_url, found_sentinel)
 
-            while not found_sentinel:
+            while not (found_sentinel == "Found Sentinel"):
                 found_sentinel = scrape_month(inversion_url, sentinel)
 
     with open('post_links.txt', mode="wt", encoding="utf-8") as myfile:
@@ -597,6 +602,9 @@ def scrape_links(post_links):
     pathlib.Path(os.getcwd()+ "/scraped/").mkdir(parents=True, exist_ok=True)
 
     for post_link in post_links:
+        images_done = False
+        external_links_done = False
+        attachments_done = False
         successful = False
         wait = 60
         while not successful:
@@ -610,212 +618,241 @@ def scrape_links(post_links):
                 else:
                     folder = os.getcwd()+ "/scraped/" + title + "/"
 
-                pathlib.Path(folder).mkdir(parents=True, exist_ok=True)    
+                pathlib.Path(folder).mkdir(parents=True, exist_ok=True)
 
-                # Get all the images
-                images = driver.find_elements_by_xpath('//img[@data-pin-nopin="true"]')
+                time.sleep(2) # delay a bit
 
                 # Only look at network traffic to the Patreon image server 
                 driver.scopes = [
                     '.*c10\.patreonusercontent.*',
                     '.*patreon.com/file.*'
                 ]
-                for image in images:
-                    del driver.requests
-                    image.click()
-                    driver.wait_for_request("c10.patreonusercontent", timeout=wait)
-                    request = driver.last_request
-                    image_url = request.url
-                    if (request.response):
 
-                        filename = image_url[image_url.rindex("/") + 1:image_url.rindex(".")]
+                # Get all the images
+                if (not images_done):
+                    images = driver.find_elements_by_xpath('//img[@data-pin-nopin="true"]')
 
-                        if (re.match(r"\d*", filename)): # Patreon has a habit of renaming images to "1.png"
-                            post_title = soup.find(attrs={"data-tag":"post-title"})
-                            post_title = post_title.contents[0]
-                            filename = "".join([c for c in post_title if c.isalpha() or c.isdigit()]).rstrip()
-
-                        fileextension = image_url[image_url.rindex("."):image_url.rindex("?")]
-
-                        path = folder + filename + fileextension
-
-                        # Don't overwrite images
-                        if (os.path.isfile(path)):
-                            repeat = 1
-                            while (os.path.isfile(path)):
-                                path = folder + filename + "_" + str(repeat) + fileextension
-                                repeat = repeat + 1
-                    
-                        output = open(path, "wb")
-                        output.write(request.response.body)
-                        output.close()
-
-                    # Once the image is downloaded, close the highlight box to get the next one
-                    time.sleep(0.5)
-                    box = driver.find_element_by_xpath('//div[@data-target="lightbox-content"]')
-                    while(box):
-                        driver.execute_script("arguments[0].click()", box)
-                        try:
-                            WebDriverWait(driver, 1)
-                            box = driver.find_element_by_xpath('//div[@data-target="lightbox-content"]')
-                        except exceptions.NoSuchElementException as err:
-                            box = None
-                            WebDriverWait(driver, 5)
-                            pass     
+                    for image in images:
+                        del driver.requests
+                        driver.execute_script("arguments[0].scrollIntoView()", image)
                         time.sleep(0.5)
+                        driver.execute_script("arguments[0].click()", image)
+                        time.sleep(0.5)
+                        driver.wait_for_request("c10.patreonusercontent", timeout=wait)
+                        request = driver.last_request
+                        image_url = request.url
+                        if (request.response):
+
+                            filename = image_url[image_url.rindex("/") + 1:image_url.rindex(".")]
+
+                            if (re.match(r"\d*", filename)): # Patreon has a habit of renaming images to "1.png"
+                                post_title = soup.find(attrs={"data-tag":"post-title"})
+                                if (post_title):
+                                    post_title = post_title.contents[0]
+                                    filename = "".join([c for c in post_title if c.isalpha() or c.isdigit()]).rstrip()
+                                elif (title):
+                                    filename = "".join([c for c in title if c.isalpha() or c.isdigit()]).rstrip()
+
+                            fileextension = image_url[image_url.rindex("."):image_url.rindex("?")]
+
+                            path = folder + filename + fileextension
+
+                            # Don't overwrite images
+                            if (os.path.isfile(path)):
+                                repeat = 1
+                                while (os.path.isfile(path)):
+                                    path = folder + filename + "_" + str(repeat) + fileextension
+                                    repeat = repeat + 1
+                        
+                            output = open(path, "wb")
+                            output.write(request.response.body)
+                            output.close()
+
+                        # Once the image is downloaded, close the highlight box to get the next one
+                        time.sleep(0.5)
+                        box = driver.find_element_by_xpath('//div[@data-target="lightbox-content"]')
+                        while(box):
+                            driver.execute_script("arguments[0].click()", box)
+                            try:
+                                WebDriverWait(driver, 1)
+                                box = driver.find_element_by_xpath('//div[@data-target="lightbox-content"]')
+                            except exceptions.NoSuchElementException as err:
+                                box = None
+                                WebDriverWait(driver, 5)
+                                pass     
+                            time.sleep(0.5)
+
+                    images_done = True
 
                 # Download any file attachments
-                attachment_links = soup.find_all(href=re.compile(r"https://www\.patreon\.com/file"))
+                if (not attachments_done):
 
-                # Only look at network requests for the Patreon file server
-                for attachment_link in attachment_links:
-                    del driver.requests
-                    url = attachment_link.get("href")
-                    print(url)
-                    text = attachment_link.contents[0]
-                    print(text)
-                    filename = text[:text.find(".")]
-                    fileextension = text[text.find("."):]
+                    attachment_links = soup.find_all(href=re.compile(r"https://www\.patreon\.com/file"))
 
-                    # get the file via XMLHttpRequest to prevent system "save as" dialog
-                    script = """
-                    var done = arguments[0];
-                    let xhr = new XMLHttpRequest();
-                    xhr.open("get", '""" + url + """')
+                    # Only look at network requests for the Patreon file server
+                    for attachment_link in attachment_links:
+                        del driver.requests
+                        url = attachment_link.get("href")
+                        print(url)
+                        text = attachment_link.contents[0]
+                        print(text)
+                        filename = text[:text.find(".")]
+                        fileextension = text[text.find("."):]
 
-                    let reader = new FileReader();
+                        # get the file via XMLHttpRequest to prevent system "save as" dialog
+                        script = """
+                        var done = arguments[0];
+                        let xhr = new XMLHttpRequest();
+                        xhr.open("get", '""" + url + """')
 
-                    xhr.onload = function(){
-                        done();
-                    }
+                        let reader = new FileReader();
 
-                    xhr.send()
-                    """
-                    # Attached files like .zip or .psd can be very large, so timeout is set to 30 minutes
-                    driver.set_script_timeout(1800) 
-                    stuff = driver.execute_async_script(script)
-                    driver.wait_for_request("patreon.com/file", timeout=1800)
-                    driver.set_script_timeout(30) 
-                    request = driver.last_request
-                    if (request.response):
-                        path = folder + filename + fileextension
+                        xhr.onload = function(){
+                            done();
+                        }
 
-                        # Don't overwrite images
-                        if (os.path.isfile(path)):
-                            repeat = 1
-                            while (os.path.isfile(path)):
-                                path = folder + filename + "_" + str(repeat) + fileextension
-                                repeat = repeat + 1
-                    
-                        output = open(path, "wb")
-                        output.write(request.response.body)
-                        output.close()
+                        xhr.send()
+                        """
+                        # Attached files like .zip or .psd can be very large, so timeout is set to 30 minutes
+                        driver.set_script_timeout(1800) 
+                        stuff = driver.execute_async_script(script)
+                        driver.wait_for_request("patreon.com/file", timeout=1800)
+                        driver.set_script_timeout(30) 
+                        request = driver.last_request
+                        if (request.response):
+                            path = folder + filename + fileextension
 
-                # If there are any links grab the post content (for Mega links with password)
-                content = soup.find(attrs={"data-tag":"post-content"})
+                            # Don't overwrite images
+                            if (os.path.isfile(path)):
+                                repeat = 1
+                                while (os.path.isfile(path)):
+                                    path = folder + filename + "_" + str(repeat) + fileextension
+                                    repeat = repeat + 1
+                        
+                            output = open(path, "wb")
+                            output.write(request.response.body)
+                            output.close()
+
+                    attachments_done = True
 
                 # Scrape External G Drive, Dropbox and Mega links
-                if (content):
-                    path = folder + "post-text.txt"
-                    content_links = content.find_all("a")
-                    external_links = []
-                    unscraped_links = []
-                    duplicate_links = []
-                    strings = []
-                    for line in content.strings:
-                        if (line.strip() != ""):
-                            strings.append(line.strip())
-                    if (content_links):
-                        for link in content_links:
-                            href = link.get("href")
-                            if (re.match(r"(https?://)?(www\.)?drive\.google\.com", href)):
-                                if (re.match(r"(https?://)?(www\.)?drive\.google\.com/(file/d/\S*|drive/folders/\S*|open\?id=\S*)", href)):
-                                    print("Complete Google Drive link")
-                                    result = scrape_google_link(href, folder)
-                                else: 
-                                    print("Incomplete Google Drive link")
-                                    for num, line in enumerate(strings):
-                                        if re.match(r"(https?://)?(www\.)?drive\.google\.com", line):
-                                            rest_of_link = strings[num+1]
-                                            if (rest_of_link.find(" ") > -1):
-                                                rest_of_link = rest_of_link[:rest_of_link.find(" ")].strip()
-                                            href = line + rest_of_link
-                                            print("complete link: " + href)
-                                            result = scrape_google_link(href, folder)
-                                            break
-                                pass 
-                            elif (re.match(r"(https?://)?(www\.)?dropbox\.com", href)):
-                                if (re.match(r"(https?://)?(www\.)?dropbox\.com/[/\S]+", href)):
-                                    print("Dropbox link")
-                                    result = scrape_dropbox_link(href, folder)
-                                else:
-                                    print("Incomplete Dropbox link")
-                                    for num, line in enumerate(strings):
-                                        if re.match(r"(https?://)?(www\.)?dropbox\.com", line):
-                                            rest_of_link = strings[num+1]
-                                            if (rest_of_link.find(" ") > -1):
-                                                rest_of_link = rest_of_link[:rest_of_link.find(" ")].strip()
-                                            href = line + rest_of_link
-                                            print("complete link: " + href)
-                                            result = scrape_dropbox_link(href, folder)
-                                            break
-                                pass
-                            elif (re.match(r"(https?://)?(www\.)?mega\.(co\.)?nz/", href)):
-                                if (re.match(r"(https?://)?(www\.)?mega\.(co\.)?nz/(folder/\S*#|file/\S*#|#)", href)):
-                                    print("Complete Mega link")
-                                    result = scrape_mega_link(href, folder)
-                                else:
-                                    print("Incomplete MEGA link")
-                                    for num, line in enumerate(strings):
-                                        if re.match(r"(https?://)?(www\.)?mega\.(co\.)?nz/", line):
-                                            rest_of_link = strings[num+1]
-                                            if (rest_of_link.find(" ") > -1):
-                                                rest_of_link = rest_of_link[:rest_of_link.find(" ")].strip()
-                                            href = line + rest_of_link
-                                            print("complete link: " + href)
-                                            result = scrape_mega_link(href, folder)
-                                            break
-                            else:
-                                result = -1
-                            
-                            external_links.append(href)
-                            if (result == -1):
-                                unscraped_links.append(href)
-                            elif (result not in scraped_external_links):
-                                scraped_external_links.append(result)
-                            elif (result in scraped_external_links):
-                                duplicate_links.append(result)
-                    if (len(strings) > 0):
-                        output = open(path, "at", encoding="utf-8")
-                        output.write("----- " + post_link + "  (" + time.strftime("%Y/%m/%d %H:%M:%S", time.localtime()) + ") -----\n")
-                        for line in strings:
-                            output.write(str(line) + "\n")
-                        if (external_links):
-                            output.write("\nExternal Links:\n")
-                            for external_link in external_links:
-                                output.write(external_link + "\n")
-                        if (duplicate_links):
-                            output.write("\nDuplicate Links:\n")
-                            for duplicate_link in duplicate_links: 
-                                output.write(duplicate_link + "\n")
-                        output.close()
+                if (not external_links_done):
 
-                    if (len(unscraped_links) > 0):
-                        output = open(folder + "UNSCRAPED-LINKS.txt", "at", encoding="utf-8")
-                        output.write("----- " + post_link  + "  (" + time.strftime("%Y/%m/%d %H:%M:%S", time.localtime()) + ") -----\n")
-                        for line in strings:
-                            output.write(str(line) + "\n")
-                        output.write("\nUnscraped Links:\n")
-                        for unscraped_link in unscraped_links:
-                            output.write(unscraped_link + "\n")
-                        output.close()
+                    # If there are any links grab the post content (for Mega links with password)
+                    content = soup.find(attrs={"data-tag":"post-content"})
+
+                    if (content):
+                        path = folder + "post-text.txt"
+                        content_links = content.find_all("a")
+                        external_links = []
+                        unscraped_links = []
+                        duplicate_links = []
+                        strings = []
+                        for line in content.strings:
+                            if (line.strip() != ""):
+                                strings.append(line.strip())
+                        if (content_links):
+                            for link in content_links:
+                                href = link.get("href")
+                                if (re.match(r"(https?://)?(www\.)?drive\.google\.com", href)):
+                                    if (re.match(r"(https?://)?(www\.)?drive\.google\.com/(file/d/\S*|drive/folders/\S*|open\?id=\S*)", href)):
+                                        print("Complete Google Drive link")
+                                        print(href)
+                                        result = scrape_google_link(href, folder)
+                                    else: 
+                                        print("Incomplete Google Drive link")
+                                        for num, line in enumerate(strings):
+                                            if re.match(r"(https?://)?(www\.)?drive\.google\.com", line):
+                                                rest_of_link = strings[num+1]
+                                                if (rest_of_link.find(" ") > -1):
+                                                    rest_of_link = rest_of_link[:rest_of_link.find(" ")].strip()
+                                                href = line + rest_of_link
+                                                print("complete link: " + href)
+                                                result = scrape_google_link(href, folder)
+                                                break
+                                    pass 
+                                elif (re.match(r"(https?://)?(www\.)?dropbox\.com", href)):
+                                    if (re.match(r"(https?://)?(www\.)?dropbox\.com/[/\S]+", href)):
+                                        print("Dropbox link")
+                                        result = scrape_dropbox_link(href, folder)
+                                    else:
+                                        print("Incomplete Dropbox link")
+                                        for num, line in enumerate(strings):
+                                            if re.match(r"(https?://)?(www\.)?dropbox\.com", line):
+                                                rest_of_link = strings[num+1]
+                                                if (rest_of_link.find(" ") > -1):
+                                                    rest_of_link = rest_of_link[:rest_of_link.find(" ")].strip()
+                                                href = line + rest_of_link
+                                                print("complete link: " + href)
+                                                result = scrape_dropbox_link(href, folder)
+                                                break
+                                    pass
+                                elif (re.match(r"(https?://)?(www\.)?mega\.(co\.)?nz/", href)):
+                                    if (re.match(r"(https?://)?(www\.)?mega\.(co\.)?nz/(folder/\S*#|file/\S*#|#)", href)):
+                                        print("Complete Mega link")
+                                        result = scrape_mega_link(href, folder)
+                                    else:
+                                        print("Incomplete MEGA link")
+                                        for num, line in enumerate(strings):
+                                            if re.match(r"(https?://)?(www\.)?mega\.(co\.)?nz/", line):
+                                                rest_of_link = strings[num+1]
+                                                if (rest_of_link.find(" ") > -1):
+                                                    rest_of_link = rest_of_link[:rest_of_link.find(" ")].strip()
+                                                href = line + rest_of_link
+                                                print("complete link: " + href)
+                                                result = scrape_mega_link(href, folder)
+                                                break
+                                else:
+                                    result = -1
+                                
+                                external_links.append(href)
+                                if (result == -1):
+                                    unscraped_links.append(href)
+                                elif (result not in scraped_external_links):
+                                    scraped_external_links.append(result)
+                                elif (result in scraped_external_links):
+                                    duplicate_links.append(result)
+                        if (len(strings) > 0):
+                            output = open(path, "at", encoding="utf-8")
+                            output.write("----- " + post_link + "  (" + time.strftime("%Y/%m/%d %H:%M:%S", time.localtime()) + ") -----\n")
+                            for line in strings:
+                                output.write(str(line) + "\n")
+                            if (external_links):
+                                output.write("\nExternal Links:\n")
+                                for external_link in external_links:
+                                    output.write(external_link + "\n")
+                            if (duplicate_links):
+                                output.write("\nDuplicate Links:\n")
+                                for duplicate_link in duplicate_links: 
+                                    output.write(duplicate_link + "\n")
+                            output.close()
+
+                        if (len(unscraped_links) > 0):
+                            output = open(folder + "UNSCRAPED-LINKS.txt", "at", encoding="utf-8")
+                            output.write("----- " + post_link  + "  (" + time.strftime("%Y/%m/%d %H:%M:%S", time.localtime()) + ") -----\n")
+                            for line in strings:
+                                output.write(str(line) + "\n")
+                            output.write("\nUnscraped Links:\n")
+                            for unscraped_link in unscraped_links:
+                                output.write(unscraped_link + "\n")
+                            output.close()
                     
+                    external_links_done = True
+
                 successful = True
             except exceptions.TimeoutException as err:
                 print("Timeout Error!")
                 print("Setting wait to: " + str(wait))
                 WebDriverWait(driver, wait)
                 wait = wait * 2
+            except exceptions.ElementNotInteractableException as err:
+                print("Couldn't click")
+                time.sleep(3)
+                continue
+            except exceptions.ElementClickInterceptedException as err:
+                print("Couldn't click")
+                time.sleep(3)
+                continue
 
 def main(argv):
     global one_folder
